@@ -144,38 +144,65 @@ class DuplicateScanner:
         self._emit("partial", 100.0, f"Partial hash complete \u2014 {len(groups)} groups ({found} files)", len(groups))
         return groups
 
-    def group_by_full_hash(self, partial_groups: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    def group_by_full_hash(
+        self,
+        partial_groups: Dict[str, List[str]],
+        mid_stage_state: Optional[dict] = None,
+    ) -> Dict[str, List[str]]:
         all_files: List[str] = [f for paths in partial_groups.values() for f in paths]
         total_files = len(all_files)
-        self._emit("full", 0.0, f"Full-hashing {total_files} candidate files", 0)
 
-        hash_map: Dict[str, List[str]] = defaultdict(list)
+        # Resume from mid-stage checkpoint if available
+        if mid_stage_state:
+            hash_map: Dict[str, List[str]] = defaultdict(list)
+            for h, paths in mid_stage_state.get("hash_map", {}).items():
+                hash_map[h].extend(paths)
+            already_done: set = set(mid_stage_state.get("processed_paths", []))
+            remaining = [f for f in all_files if f not in already_done]
+            done_count = len(already_done)
+            self._emit("full", done_count / total_files * 100,
+                       f"Resuming full hash from file {done_count + 1}/{total_files}", 0)
+        else:
+            hash_map = defaultdict(list)
+            already_done = set()
+            remaining = all_files
+            done_count = 0
+            self._emit("full", 0.0, f"Full-hashing {total_files} candidate files", 0)
 
-        for file_idx, fpath in enumerate(all_files):
+        MID_CHECKPOINT_EVERY = 100  # save progress every N files
+
+        for step, fpath in enumerate(remaining):
+            global_idx = done_count + step
             fname = os.path.basename(fpath)
 
-            # Per-file progress callback so large files don't freeze the UI
-            def _file_progress(bytes_done: int, bytes_total: int, _idx=file_idx, _name=fname):
-                file_pct  = bytes_done / bytes_total
-                # overall progress = files fully done + fraction of current file
-                overall   = (_idx + file_pct) / total_files * 100
-                self._emit(
-                    "full", overall,
-                    f"Full hash\u2026 file {_idx + 1}/{total_files}: {_name} ({int(file_pct*100)}%)",
-                    0,
-                )
+            def _file_progress(bytes_done: int, bytes_total: int, _idx=global_idx, _name=fname):
+                file_pct = bytes_done / bytes_total
+                overall  = (_idx + file_pct) / total_files * 100
+                self._emit("full", overall,
+                           f"Full hash\u2026 file {_idx + 1}/{total_files}: {_name} ({int(file_pct*100)}%)", 0)
 
             h = _full_hash(fpath, progress_cb=_file_progress)
             if h is not None:
                 hash_map[h].append(fpath)
 
-            # Emit after each file completes
-            pct = (file_idx + 1) / total_files * 100
-            self._emit("full", pct, f"Full hash\u2026 {file_idx + 1}/{total_files}", 0)
+            pct = (global_idx + 1) / total_files * 100
+            self._emit("full", pct, f"Full hash\u2026 {global_idx + 1}/{total_files}", 0)
+
+            # Save mid-stage checkpoint every N files
+            if (step + 1) % MID_CHECKPOINT_EVERY == 0:
+                processed_so_far = list(already_done) + remaining[: step + 1]
+                self.checkpoint_callback("full_hash_partial", {
+                    "hash_map":        dict(hash_map),
+                    "processed_paths": processed_so_far,
+                    "total":           total_files,
+                    "done":            global_idx + 1,
+                })
 
         groups = {h: paths for h, paths in hash_map.items() if len(paths) > 1}
         found  = sum(len(v) for v in groups.values())
-        self._emit("full", 100.0, f"Full hash complete \u2014 {len(groups)} confirmed duplicate groups ({found} files)", len(groups))
+        self._emit("full", 100.0,
+                   f"Full hash complete \u2014 {len(groups)} confirmed duplicate groups ({found} files)",
+                   len(groups))
         return groups
 
     def scan(self, path: str, stages: List[str], checkpoints: dict = None) -> Dict:
@@ -225,11 +252,13 @@ class DuplicateScanner:
                 self._emit("partial", 100.0, "Skipped", 0)
 
         # Full hash stage — always runs from whatever partial_groups we have
+        mid_stage = checkpoints.get("full_hash_partial")
         if "full" in stages and partial_groups:
-            full_groups = self.group_by_full_hash(partial_groups)
+            full_groups = self.group_by_full_hash(partial_groups, mid_stage_state=mid_stage)
         elif "full" in stages and size_groups and "partial" not in stages:
             full_groups = self.group_by_full_hash(
-                {str(sz): paths for sz, paths in size_groups.items()}
+                {str(sz): paths for sz, paths in size_groups.items()},
+                mid_stage_state=mid_stage,
             )
         elif "full" in stages:
             self._emit("full", 100.0, "No candidates to full-hash", 0)
