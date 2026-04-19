@@ -81,9 +81,13 @@ def _full_hash(path: str, progress_cb: Optional[Callable] = None) -> Optional[st
 
 
 class DuplicateScanner:
-    def __init__(self, callback: Optional[Callable] = None):
-        """callback(stage, progress_pct, message, found_count)"""
+    def __init__(self, callback: Optional[Callable] = None, checkpoint_callback: Optional[Callable] = None):
+        """
+        callback(stage, progress_pct, message, found_count)
+        checkpoint_callback(stage_key, data)
+        """
         self.callback = callback or (lambda *a, **kw: None)
+        self.checkpoint_callback = checkpoint_callback or (lambda *a, **kw: None)
 
     def _emit(self, stage: str, progress: float, message: str, found: int):
         self.callback(stage, progress, message, found)
@@ -113,11 +117,11 @@ class DuplicateScanner:
 
             if total > 0 and (idx % 100 == 0 or idx == total - 1):
                 pct = (idx + 1) / total * 100
-                self._emit("size", pct, f"Sizing files… {idx + 1}/{total}", 0)
+                self._emit("size", pct, f"Sizing files\u2026 {idx + 1}/{total}", 0)
 
         groups = {sz: paths for sz, paths in size_map.items() if len(paths) > 1}
         found  = sum(len(v) for v in groups.values())
-        self._emit("size", 100.0, f"Size grouping complete — {len(groups)} groups ({found} files)", len(groups))
+        self._emit("size", 100.0, f"Size grouping complete \u2014 {len(groups)} groups ({found} files)", len(groups))
         return groups
 
     def group_by_partial_hash(self, size_groups: Dict[int, List[str]]) -> Dict[str, List[str]]:
@@ -133,11 +137,11 @@ class DuplicateScanner:
 
             if total > 0 and (idx % 20 == 0 or idx == total - 1):
                 pct = (idx + 1) / total * 100
-                self._emit("partial", pct, f"Partial hash… {idx + 1}/{total}", 0)
+                self._emit("partial", pct, f"Partial hash\u2026 {idx + 1}/{total}", 0)
 
         groups = {h: paths for h, paths in hash_map.items() if len(paths) > 1}
         found  = sum(len(v) for v in groups.values())
-        self._emit("partial", 100.0, f"Partial hash complete — {len(groups)} groups ({found} files)", len(groups))
+        self._emit("partial", 100.0, f"Partial hash complete \u2014 {len(groups)} groups ({found} files)", len(groups))
         return groups
 
     def group_by_full_hash(self, partial_groups: Dict[str, List[str]]) -> Dict[str, List[str]]:
@@ -157,7 +161,7 @@ class DuplicateScanner:
                 overall   = (_idx + file_pct) / total_files * 100
                 self._emit(
                     "full", overall,
-                    f"Full hash… file {_idx + 1}/{total_files}: {_name} ({int(file_pct*100)}%)",
+                    f"Full hash\u2026 file {_idx + 1}/{total_files}: {_name} ({int(file_pct*100)}%)",
                     0,
                 )
 
@@ -167,30 +171,60 @@ class DuplicateScanner:
 
             # Emit after each file completes
             pct = (file_idx + 1) / total_files * 100
-            self._emit("full", pct, f"Full hash… {file_idx + 1}/{total_files}", 0)
+            self._emit("full", pct, f"Full hash\u2026 {file_idx + 1}/{total_files}", 0)
 
         groups = {h: paths for h, paths in hash_map.items() if len(paths) > 1}
         found  = sum(len(v) for v in groups.values())
-        self._emit("full", 100.0, f"Full hash complete — {len(groups)} confirmed duplicate groups ({found} files)", len(groups))
+        self._emit("full", 100.0, f"Full hash complete \u2014 {len(groups)} confirmed duplicate groups ({found} files)", len(groups))
         return groups
 
-    def scan(self, path: str, stages: List[str]) -> Dict:
+    def scan(self, path: str, stages: List[str], checkpoints: dict = None) -> Dict:
+        if checkpoints is None:
+            checkpoints = {}
+
         size_groups:    Dict[int, List[str]] = {}
         partial_groups: Dict[str, List[str]] = {}
         full_groups:    Dict[str, List[str]] = {}
 
-        if "size" in stages:
-            size_groups = self.group_by_size(path)
-        else:
-            self._emit("size", 100.0, "Skipped", 0)
+        # Determine which stages to skip based on available checkpoints
+        has_partial_checkpoint = "partial_groups" in checkpoints
+        has_size_checkpoint    = "size_groups" in checkpoints
 
-        if "partial" in stages and size_groups:
-            partial_groups = self.group_by_partial_hash(size_groups)
-        elif "partial" in stages:
-            self._emit("partial", 100.0, "No candidates from size stage", 0)
-        else:
-            self._emit("partial", 100.0, "Skipped", 0)
+        if has_partial_checkpoint:
+            # Both size and partial stages can be skipped
+            partial_groups = checkpoints["partial_groups"]
+            self._emit("size", 100.0, "Resumed from checkpoint (size stage skipped)", 0)
+            self._emit("partial", 100.0, "Resumed from checkpoint (partial hash stage skipped)", len(partial_groups))
+        elif has_size_checkpoint:
+            # Only the size stage can be skipped; convert string keys back to int
+            raw = checkpoints["size_groups"]
+            size_groups = {int(k): v for k, v in raw.items()}
+            self._emit("size", 100.0, "Resumed from checkpoint (size stage skipped)", len(size_groups))
 
+            if "partial" in stages and size_groups:
+                partial_groups = self.group_by_partial_hash(size_groups)
+                self.checkpoint_callback("partial_groups", partial_groups)
+            elif "partial" in stages:
+                self._emit("partial", 100.0, "No candidates from size stage", 0)
+            else:
+                self._emit("partial", 100.0, "Skipped", 0)
+        else:
+            # No checkpoints — run normally
+            if "size" in stages:
+                size_groups = self.group_by_size(path)
+                self.checkpoint_callback("size_groups", {str(k): v for k, v in size_groups.items()})
+            else:
+                self._emit("size", 100.0, "Skipped", 0)
+
+            if "partial" in stages and size_groups:
+                partial_groups = self.group_by_partial_hash(size_groups)
+                self.checkpoint_callback("partial_groups", partial_groups)
+            elif "partial" in stages:
+                self._emit("partial", 100.0, "No candidates from size stage", 0)
+            else:
+                self._emit("partial", 100.0, "Skipped", 0)
+
+        # Full hash stage — always runs from whatever partial_groups we have
         if "full" in stages and partial_groups:
             full_groups = self.group_by_full_hash(partial_groups)
         elif "full" in stages and size_groups and "partial" not in stages:

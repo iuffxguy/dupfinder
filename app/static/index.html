@@ -805,6 +805,99 @@
       color: var(--text-faint);
       margin-bottom: 10px;
     }
+
+    /* ── Recent Jobs panel ── */
+    #active-banner {
+      border-color: var(--accent);
+    }
+    #active-banner p {
+      color: var(--text-dim);
+      font-size: 0.875rem;
+      margin-bottom: 14px;
+    }
+    #active-banner .banner-path {
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--text);
+      font-size: 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 12px;
+      display: inline-block;
+      margin-bottom: 14px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .job-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .job-row:last-child { border-bottom: none; }
+
+    .job-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .job-status-dot.done        { background: var(--success); }
+    .job-status-dot.running     { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .job-status-dot.error       { background: var(--danger); }
+    .job-status-dot.interrupted { background: var(--warning); }
+
+    .job-path {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.82rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .job-meta {
+      font-size: 0.75rem;
+      color: var(--text-faint);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .job-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .btn-xs {
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: opacity 0.15s;
+      background: var(--surface2);
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .btn-xs:hover { opacity: 0.75; }
+    .btn-xs.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-xs.danger  { background: transparent; border-color: var(--danger); color: var(--danger); }
+    .btn-xs.success { background: var(--success); border-color: var(--success); color: #111; }
+    .btn-xs.warn    { background: var(--warning); border-color: var(--warning); color: #111; }
+
+    .jobs-empty {
+      color: var(--text-faint);
+      font-size: 0.875rem;
+      padding: 16px 0;
+    }
   </style>
 </head>
 <body>
@@ -816,6 +909,22 @@
     <p>Duplicate Media File Finder v1.1</p>
   </header>
 
+  <!-- Active Scan Banner (shown when reconnecting to a running scan) -->
+  <div id="active-banner" style="display:none" class="card">
+    <h2>Active Scan</h2>
+    <p>A scan is currently running. Reconnect to monitor its progress.</p>
+    <div class="banner-path" id="active-banner-path"></div>
+    <div>
+      <button class="btn btn-primary" id="active-banner-btn" onclick="reconnectBannerJob()">Reconnect</button>
+    </div>
+  </div>
+
+  <!-- Recent Jobs -->
+  <div class="card" id="jobs-card">
+    <h2>Recent Jobs <span id="jobs-count" style="font-weight:normal;font-size:0.8rem;text-transform:none;letter-spacing:0"></span></h2>
+    <div id="jobs-list-panel"></div>
+  </div>
+
   <!-- Scan Config -->
   <div class="card">
     <h2>Scan Configuration</h2>
@@ -823,7 +932,7 @@
     <label for="scan-path">Folder path</label>
     <div class="path-row">
       <input type="text" id="scan-path" placeholder="/mnt/user/media" autocomplete="off" spellcheck="false" />
-      <button class="btn-browse" onclick="openBrowser()">📁 Browse</button>
+      <button class="btn-browse" onclick="openBrowser()">&#128193; Browse</button>
     </div>
 
     <div class="stages">
@@ -875,7 +984,7 @@
       <div class="progress-bar-fill" id="progress-bar"></div>
     </div>
 
-    <div class="progress-msg" id="progress-msg">Initializing…</div>
+    <div class="progress-msg" id="progress-msg">Initializing&#8230;</div>
 
     <div class="live-stats">
       <div class="stat-box">
@@ -883,7 +992,7 @@
         <div class="stat-label">Duplicate Groups</div>
       </div>
       <div class="stat-box">
-        <div class="stat-val" id="stat-stage">—</div>
+        <div class="stat-val" id="stat-stage">&#8212;</div>
         <div class="stat-label">Current Stage</div>
       </div>
     </div>
@@ -918,7 +1027,7 @@
     <div class="browser-header">
       <h2>Browse</h2>
       <span class="browser-crumb" id="browser-crumb">/</span>
-      <button class="modal-close" onclick="closeBrowser()">✕</button>
+      <button class="modal-close" onclick="closeBrowser()">&#10005;</button>
     </div>
     <div class="browser-list" id="browser-list"></div>
     <div class="browser-footer">
@@ -939,7 +1048,7 @@
         <span class="g-badge" id="modal-size"></span>
         <span class="g-badge red" id="modal-wasted"></span>
       </div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
     </div>
     <div class="modal-body">
       <div class="thumb-grid" id="modal-thumb-grid"></div>
@@ -976,9 +1085,10 @@
 
 <script>
   // ── State ──────────────────────────────────────────────────────────────────
-  let currentJobId = null;
-  let eventSource  = null;
-  let lastResults  = null;
+  let currentJobId  = null;
+  let eventSource   = null;
+  let lastResults   = null;
+  let activeBannerJobId = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function fmtSize(bytes) {
@@ -1000,6 +1110,16 @@
     return map[stage] || stage;
   }
 
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const diff = Math.floor(Date.now() / 1000 - ts);
+    if (diff < 60)       return 'just now';
+    if (diff < 3600)     return Math.floor(diff / 60) + ' min ago';
+    if (diff < 86400)    return Math.floor(diff / 3600) + ' hour' + (Math.floor(diff / 3600) !== 1 ? 's' : '') + ' ago';
+    if (diff < 604800)   return Math.floor(diff / 86400) + ' day' + (Math.floor(diff / 86400) !== 1 ? 's' : '') + ' ago';
+    return new Date(ts * 1000).toLocaleDateString();
+  }
+
   // ── Pill management ────────────────────────────────────────────────────────
   const STAGE_ORDER = ['size', 'partial', 'full'];
 
@@ -1016,6 +1136,136 @@
     for (const s of STAGE_ORDER) {
       if (s === activeStage) { found = true; document.getElementById('pill-' + s).classList.add('active'); }
       else if (!found)        document.getElementById('pill-' + s).classList.add('done');
+    }
+  }
+
+  // ── Recent Jobs ────────────────────────────────────────────────────────────
+  async function loadJobs() {
+    try {
+      const res  = await fetch('/jobs');
+      if (!res.ok) return;
+      const jobs = await res.json();
+
+      const panel = document.getElementById('jobs-list-panel');
+      const count = document.getElementById('jobs-count');
+
+      // Show/hide the active banner for any running job not already being tracked
+      const runningJob = jobs.find(j => j.status === 'running' && j.id !== currentJobId);
+      const banner = document.getElementById('active-banner');
+      if (runningJob) {
+        activeBannerJobId = runningJob.id;
+        document.getElementById('active-banner-path').textContent = runningJob.path;
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+        activeBannerJobId = null;
+      }
+
+      if (jobs.length === 0) {
+        count.textContent = '';
+        panel.innerHTML = '<div class="jobs-empty">No scan history yet. Start a scan above.</div>';
+        return;
+      }
+
+      count.textContent = `(${jobs.length})`;
+
+      panel.innerHTML = jobs.map(job => {
+        const dotClass = ['done','running','error','interrupted'].includes(job.status) ? job.status : 'error';
+        const pathText = job.path || '—';
+
+        // Build result summary
+        let summary = '';
+        const prog = job.progress || {};
+        if (job.status === 'done' && prog.found != null) {
+          summary = `${prog.found} group${prog.found !== 1 ? 's' : ''} found`;
+        } else if (job.status === 'running') {
+          summary = prog.message ? esc(prog.message).substring(0, 60) : 'Running…';
+        } else if (job.status === 'error') {
+          summary = job.error ? esc(String(job.error)).substring(0, 60) : 'Failed';
+        } else if (job.status === 'interrupted') {
+          summary = 'Interrupted';
+        }
+
+        // Build action buttons
+        let actions = '';
+        if (job.status === 'done') {
+          actions += `<button class="btn-xs success" onclick="viewResults('${esc(job.id)}')">View Results</button>`;
+        } else if (job.status === 'running') {
+          actions += `<button class="btn-xs primary" onclick="reconnectJob('${esc(job.id)}')">Reconnect</button>`;
+        } else if (job.status === 'error' || job.status === 'interrupted') {
+          actions += `<button class="btn-xs warn" onclick="resumeJob('${esc(job.id)}')">Resume</button>`;
+        }
+        actions += `<button class="btn-xs danger" onclick="removeJob('${esc(job.id)}')" title="Remove from history">&#10005;</button>`;
+
+        return `
+          <div class="job-row" id="job-row-${esc(job.id)}">
+            <div class="job-status-dot ${dotClass}" title="${esc(job.status)}"></div>
+            <div class="job-path" title="${esc(pathText)}">${esc(pathText)}</div>
+            <div class="job-meta">${timeAgo(job.created_at)}${summary ? ' &middot; ' + summary : ''}</div>
+            <div class="job-actions">${actions}</div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      // Silently fail — jobs panel is non-critical
+    }
+  }
+
+  function reconnectBannerJob() {
+    if (activeBannerJobId) reconnectJob(activeBannerJobId);
+  }
+
+  function reconnectJob(jobId) {
+    currentJobId = jobId;
+    document.getElementById('start-btn').disabled = true;
+    document.getElementById('cancel-btn').style.display = 'inline-flex';
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('results-section').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('progress-msg').textContent = 'Reconnecting…';
+    document.getElementById('stat-groups').textContent = '0';
+    document.getElementById('stat-stage').textContent = '—';
+    document.getElementById('active-banner').style.display = 'none';
+    listenProgress(jobId);
+  }
+
+  async function resumeJob(jobId) {
+    try {
+      const res = await fetch(`/scan/${jobId}/resume`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        showToast('Resume failed: ' + (err.detail || res.statusText), 'error');
+        return;
+      }
+      const data = await res.json();
+      reconnectJob(data.job_id);
+      await loadJobs();
+    } catch (e) {
+      showToast('Resume error: ' + e.message, 'error');
+    }
+  }
+
+  async function viewResults(jobId) {
+    try {
+      const res = await fetch(`/scan/${jobId}/results`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        showToast('Could not load results: ' + (err.detail || res.statusText), 'error');
+        return;
+      }
+      lastResults = await res.json();
+      renderResults(lastResults);
+      document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) {
+      showToast('Error loading results: ' + e.message, 'error');
+    }
+  }
+
+  async function removeJob(jobId) {
+    try {
+      await fetch(`/jobs/${jobId}`, { method: 'DELETE' });
+      await loadJobs();
+    } catch (e) {
+      showToast('Could not remove job.', 'error');
     }
   }
 
@@ -1057,6 +1307,7 @@
       }
       const data = await res.json();
       currentJobId = data.job_id;
+      await loadJobs();
       listenProgress(currentJobId);
     } catch (e) {
       showError(e.message);
@@ -1081,10 +1332,17 @@
         if (d.status === 'done') {
           eventSource.close();
           fetchResults(jobId);
+          loadJobs();
         } else if (d.status === 'error') {
           eventSource.close();
           showError(d.message || 'An unknown error occurred during scan.');
           resetScanBtn();
+          loadJobs();
+        } else if (d.status === 'interrupted') {
+          eventSource.close();
+          showError('Scan was interrupted (server restarted). You can resume it from the Recent Jobs panel.');
+          resetScanBtn();
+          loadJobs();
         }
       } catch (_) {}
     };
@@ -1149,7 +1407,7 @@
     if (!data.groups || data.groups.length === 0) {
       list.innerHTML = `
         <div class="empty-state">
-          <div class="icon">✓</div>
+          <div class="icon">&#10003;</div>
           <h3>No duplicates found</h3>
           <p>All scanned media files appear to be unique.</p>
         </div>`;
@@ -1161,16 +1419,6 @@
 
     list.innerHTML = sorted.map((group, idx) => {
       const firstName = group.files[0]?.name || '(unknown)';
-      const filesHtml = group.files.map((f, fi) => `
-        <div class="file-row">
-          <input type="checkbox" id="chk-${idx}-${fi}" title="Mark for review" />
-          <div class="file-info">
-            <div class="file-name" title="${esc(f.path)}">${esc(f.name)}</div>
-            <div class="file-dir">${esc(f.directory)}</div>
-          </div>
-          <div class="file-size-tag">${fmtSize(f.size)}</div>
-        </div>
-      `).join('');
 
       return `
         <div class="dup-group" id="group-${idx}">
@@ -1180,7 +1428,7 @@
             <div class="g-meta">
               <span class="g-badge blue">${group.file_count} copies</span>
               <span class="g-badge">${fmtSize(group.file_size)} each</span>
-              <span class="g-badge red">−${fmtSize(group.wasted_bytes)}</span>
+              <span class="g-badge red">&#8722;${fmtSize(group.wasted_bytes)}</span>
             </div>
           </div>
         </div>`;
@@ -1207,7 +1455,7 @@
     document.getElementById('modal-title').textContent   = group.files[0]?.name || 'Duplicate Group';
     document.getElementById('modal-count').textContent   = group.file_count + ' copies';
     document.getElementById('modal-size').textContent    = fmtSize(group.file_size) + ' each';
-    document.getElementById('modal-wasted').textContent  = '−' + fmtSize(group.wasted_bytes);
+    document.getElementById('modal-wasted').textContent  = '\u2212' + fmtSize(group.wasted_bytes);
 
     // Thumbnail grid
     const grid = document.getElementById('modal-thumb-grid');
@@ -1308,7 +1556,6 @@
       return;
     }
     pendingAction = action;
-    const label = action === 'bin' ? 'Move to duplicate bin' : 'Permanently delete';
     document.getElementById('confirm-box-title').textContent = action === 'bin'
       ? 'Move files to duplicate bin?'
       : 'Permanently delete files?';
@@ -1386,9 +1633,9 @@
 
   function fileIcon(name) {
     const ext = name.split('.').pop().toLowerCase();
-    if (['mp4','mkv','avi','mov','wmv','flv','m4v'].includes(ext)) return '🎬';
-    if (['mp3','flac','wav','aac','m4a','ogg','opus','wma'].includes(ext)) return '🎵';
-    return '📄';
+    if (['mp4','mkv','avi','mov','wmv','flv','m4v'].includes(ext)) return '&#127916;';
+    if (['mp3','flac','wav','aac','m4a','ogg','opus','wma'].includes(ext)) return '&#127925;';
+    return '&#128196;';
   }
 
   // ── Toast ──────────────────────────────────────────────────────────────────
@@ -1476,7 +1723,7 @@
       let html = '';
       if (data.parent !== null) {
         html += `<button class="browser-item up-item" onclick="browseTo('${esc(data.parent)}')">
-          <span class="dir-icon">↑</span>
+          <span class="dir-icon">&#8593;</span>
           <span class="dir-name">.. (up a level)</span>
         </button>`;
       }
@@ -1485,9 +1732,9 @@
       } else {
         html += data.dirs.map(d => `
           <button class="browser-item" onclick="browseTo('${esc(d.path)}')">
-            <span class="dir-icon">📁</span>
+            <span class="dir-icon">&#128193;</span>
             <span class="dir-name">${esc(d.name)}</span>
-            <span class="dir-arrow">›</span>
+            <span class="dir-arrow">&#8250;</span>
           </button>`).join('');
       }
       list.innerHTML = html;
@@ -1500,6 +1747,9 @@
   document.getElementById('scan-path').addEventListener('keydown', e => {
     if (e.key === 'Enter') startScan();
   });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadJobs();
 </script>
 </body>
 </html>
