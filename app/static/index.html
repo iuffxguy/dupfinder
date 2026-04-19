@@ -767,6 +767,20 @@
       font-size: 0.75rem;
       color: var(--text-faint);
     }
+    .video-badge {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
     .thumb-img-wrap .thumb-error {
       font-size: 0.7rem;
       color: var(--danger);
@@ -1436,12 +1450,15 @@
   }
 
   // ── Modal ──────────────────────────────────────────────────────────────────
-  const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif']);
-  let currentModalGroup = null;  // the group object currently open
+  const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','heic','heif']);
+  const VIDEO_EXTS  = new Set(['mp4','mkv','avi','mov','wmv','flv','m4v','webm','3gp','3g2','mts','m2ts','ts','vob','mpg','mpeg','ogv','f4v']);
+  let currentModalGroup = null;
 
   function isImage(filename) {
-    const ext = filename.split('.').pop().toLowerCase();
-    return IMAGE_EXTS.has(ext);
+    return IMAGE_EXTS.has(filename.split('.').pop().toLowerCase());
+  }
+  function isVideo(filename) {
+    return VIDEO_EXTS.has(filename.split('.').pop().toLowerCase());
   }
 
   function openModal(idx) {
@@ -1460,10 +1477,12 @@
     // Thumbnail grid
     const grid = document.getElementById('modal-thumb-grid');
     grid.innerHTML = group.files.map((f, fi) => {
-      const img = isImage(f.name);
-      const thumbSrc = img ? `/thumbnail?path=${encodeURIComponent(f.path)}&size=300` : null;
-      const imgTag = img
-        ? `<img src="${thumbSrc}" alt="${esc(f.name)}" onerror="this.parentNode.innerHTML='<span class=thumb-error>Preview unavailable</span>'" />`
+      const hasThumb = isImage(f.name) || isVideo(f.name);
+      const isVid    = isVideo(f.name);
+      const thumbSrc = hasThumb ? `/thumbnail?path=${encodeURIComponent(f.path)}&size=300` : null;
+      const imgTag   = hasThumb
+        ? `<img src="${thumbSrc}" alt="${esc(f.name)}" onerror="this.parentNode.innerHTML='<span class=thumb-placeholder>${isVid ? '&#127916;' : '&#128444;'}</span>'" />
+           ${isVid ? '<span class="video-badge">&#9654; VIDEO</span>' : ''}`
         : `<span class="thumb-placeholder">${fileIcon(f.name)}</span>`;
 
       return `

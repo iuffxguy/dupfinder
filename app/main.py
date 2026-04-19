@@ -386,28 +386,58 @@ async def browse(path: str = Query("/")):
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".webm",
+                    ".3gp", ".3g2", ".mts", ".m2ts", ".ts", ".vob", ".mpg", ".mpeg", ".ogv", ".f4v"}
+
+
+def _pil_to_jpeg_response(img, size: int) -> Response:
+    from PIL import Image
+    img.thumbnail((size, size), Image.LANCZOS)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type="image/jpeg",
+                    headers={"Cache-Control": "max-age=3600"})
 
 
 @app.get("/thumbnail")
 async def get_thumbnail(path: str = Query(...), size: int = Query(200)):
+    import subprocess
     from PIL import Image
+
     file_path = Path(path)
-    if file_path.suffix.lower() not in IMAGE_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Not a supported image file")
+    suffix = file_path.suffix.lower()
+
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    try:
-        img = Image.open(str(file_path))
-        img.thumbnail((size, size), Image.LANCZOS)
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        buf.seek(0)
-        return Response(content=buf.getvalue(), media_type="image/jpeg",
-                        headers={"Cache-Control": "max-age=3600"})
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Could not generate thumbnail: {exc}")
+
+    if suffix in IMAGE_EXTENSIONS:
+        try:
+            img = Image.open(str(file_path))
+            return _pil_to_jpeg_response(img, size)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Could not generate thumbnail: {exc}")
+
+    if suffix in VIDEO_EXTENSIONS:
+        # Try seeking to 10s first; fall back to first frame if video is shorter
+        for seek in ("00:00:10", "00:00:00"):
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-ss", seek, "-i", str(file_path),
+                     "-vframes", "1", "-f", "image2pipe", "-vcodec", "mjpeg",
+                     "-loglevel", "quiet", "-"],
+                    capture_output=True, timeout=30,
+                )
+                if result.returncode == 0 and result.stdout:
+                    img = Image.open(io.BytesIO(result.stdout))
+                    return _pil_to_jpeg_response(img, size)
+            except (subprocess.TimeoutExpired, Exception):
+                continue
+        raise HTTPException(status_code=500, detail="Could not extract video frame")
+
+    raise HTTPException(status_code=400, detail="Not a supported file type")
 
 
 @app.post("/files/delete")
