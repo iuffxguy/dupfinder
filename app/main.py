@@ -577,6 +577,10 @@ async def get_thumbnail(path: str = Query(...), size: int = Query(200)):
 async def get_analytics():
     data = db_get_analytics()
     data.update(db_get_cache_stats())
+    try:
+        data["db_size_bytes"] = DB_PATH.stat().st_size
+    except OSError:
+        data["db_size_bytes"] = 0
     return data
 
 

@@ -1000,14 +1000,13 @@
       <span id="analytics-toggle" style="float:right;font-size:0.85rem;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--text-dim)">▼</span>
     </h2>
     <div id="analytics-body">
-      <div id="analytics-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px"></div>
-      <div id="analytics-cache-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
-        <span style="font-size:0.85rem;color:var(--text-dim)">Hash cache: <strong id="analytics-cache-count" style="color:var(--text)">—</strong> files</span>
-        <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="clearHashCache()">Clear Cache</button>
-      </div>
+      <div id="analytics-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:0.8rem;color:var(--text-dim)">Recent file history (last 200)</span>
-        <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="loadAnalytics()">Refresh</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="clearHashCache()">Clear Hash Cache</button>
+          <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="loadAnalytics()">Refresh</button>
+        </div>
       </div>
       <div id="analytics-table-wrap" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
         <table id="analytics-table" style="width:100%;border-collapse:collapse;font-size:0.78rem">
@@ -1282,17 +1281,14 @@
       if (!res.ok) return;
       const d = await res.json();
 
-      document.getElementById('analytics-cache-count').textContent =
-        (d.cached_files || 0).toLocaleString();
-
       const summary = document.getElementById('analytics-summary');
       summary.innerHTML = `
         <div class="bulk-stat"><div class="bv">${d.total_files.toLocaleString()}</div><div class="bl">Total files removed</div></div>
-        <div class="bulk-stat" style="grid-column:span 2"><div class="bv" style="font-size:1.1rem">${fmtSize(d.total_bytes)}</div><div class="bl">Total space freed</div></div>
+        <div class="bulk-stat"><div class="bv" style="font-size:1.1rem">${fmtSize(d.total_bytes)}</div><div class="bl">Total space freed</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--accent)">${fmtSize(d.db_size_bytes || 0)}</div><div class="bl">Database size</div></div>
         <div class="bulk-stat"><div class="bv" style="color:var(--danger)">${d.deleted_count.toLocaleString()}</div><div class="bl">Permanently deleted</div></div>
-        <div class="bulk-stat"><div class="bv" style="color:var(--danger)">${fmtSize(d.deleted_bytes)}</div><div class="bl">Space from deletions</div></div>
         <div class="bulk-stat"><div class="bv" style="color:var(--warning)">${d.binned_count.toLocaleString()}</div><div class="bl">Moved to bin</div></div>
-        <div class="bulk-stat"><div class="bv" style="color:var(--warning)">${fmtSize(d.binned_bytes)}</div><div class="bl">Space from bin moves</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--accent)">${(d.cached_files || 0).toLocaleString()}</div><div class="bl">Files in hash cache</div></div>
       `;
 
       const tbody = document.getElementById('analytics-tbody');
