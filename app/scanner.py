@@ -151,7 +151,13 @@ class DuplicateScanner:
         self,
         partial_groups: Dict[str, List[str]],
         mid_stage_state: Optional[dict] = None,
+        cache_lookup: Optional[Callable] = None,
+        cache_store:  Optional[Callable] = None,
     ) -> Dict[str, List[str]]:
+        """
+        cache_lookup(path, size, mtime) -> Optional[str]  — returns cached hash or None
+        cache_store(entries)  — entries: list of (path, size, mtime, hash)
+        """
         all_files: List[str] = [f for paths in partial_groups.values() for f in paths]
         total_files = len(all_files)
 
@@ -172,12 +178,32 @@ class DuplicateScanner:
             done_count = 0
             self._emit("full", 0.0, f"Full-hashing {total_files} candidate files", 0)
 
-        MID_CHECKPOINT_EVERY = 100  # save progress every N files
+        MID_CHECKPOINT_EVERY = 100
+        cache_hits = 0
+        pending_cache_writes: list = []
 
         for step, fpath in enumerate(remaining):
             global_idx = done_count + step
             fname = os.path.basename(fpath)
+            h = None
 
+            # ── Cache lookup ──────────────────────────────────────────────
+            if cache_lookup:
+                try:
+                    st = os.stat(fpath)
+                    h = cache_lookup(fpath, st.st_size, st.st_mtime)
+                    if h is not None:
+                        cache_hits += 1
+                        hash_map[h].append(fpath)
+                        pct = (global_idx + 1) / total_files * 100
+                        self._emit("full", pct,
+                                   f"Full hash\u2026 {global_idx + 1}/{total_files} "
+                                   f"({cache_hits} cached)", 0)
+                        continue
+                except (OSError, PermissionError):
+                    pass
+
+            # ── Compute hash ──────────────────────────────────────────────
             def _file_progress(bytes_done: int, bytes_total: int, _idx=global_idx, _name=fname):
                 file_pct = bytes_done / bytes_total
                 overall  = (_idx + file_pct) / total_files * 100
@@ -187,9 +213,22 @@ class DuplicateScanner:
             h = _full_hash(fpath, progress_cb=_file_progress)
             if h is not None:
                 hash_map[h].append(fpath)
+                if cache_store:
+                    try:
+                        st = os.stat(fpath)
+                        pending_cache_writes.append((fpath, st.st_size, st.st_mtime, h))
+                    except (OSError, PermissionError):
+                        pass
 
             pct = (global_idx + 1) / total_files * 100
-            self._emit("full", pct, f"Full hash\u2026 {global_idx + 1}/{total_files}", 0)
+            self._emit("full", pct,
+                       f"Full hash\u2026 {global_idx + 1}/{total_files}"
+                       + (f" ({cache_hits} cached)" if cache_hits else ""), 0)
+
+            # Flush cache writes every 50 files
+            if cache_store and len(pending_cache_writes) >= 50:
+                cache_store(pending_cache_writes)
+                pending_cache_writes.clear()
 
             # Save mid-stage checkpoint every N files
             if (step + 1) % MID_CHECKPOINT_EVERY == 0:
@@ -201,14 +240,21 @@ class DuplicateScanner:
                     "done":            global_idx + 1,
                 })
 
+        # Final cache flush
+        if cache_store and pending_cache_writes:
+            cache_store(pending_cache_writes)
+
         groups = {h: paths for h, paths in hash_map.items() if len(paths) > 1}
         found  = sum(len(v) for v in groups.values())
+        cache_note = f", {cache_hits} from cache" if cache_hits else ""
         self._emit("full", 100.0,
-                   f"Full hash complete \u2014 {len(groups)} confirmed duplicate groups ({found} files)",
+                   f"Full hash complete \u2014 {len(groups)} confirmed duplicate groups ({found} files{cache_note})",
                    len(groups))
         return groups
 
-    def scan(self, path, stages: List[str], checkpoints: dict = None) -> Dict:
+    def scan(self, path, stages: List[str], checkpoints: dict = None,
+             cache_lookup: Optional[Callable] = None,
+             cache_store:  Optional[Callable] = None) -> Dict:
         # Accept either a single path string or a list of paths
         if isinstance(path, str):
             path = [path]
@@ -260,11 +306,13 @@ class DuplicateScanner:
         # Full hash stage — always runs from whatever partial_groups we have
         mid_stage = checkpoints.get("full_hash_partial")
         if "full" in stages and partial_groups:
-            full_groups = self.group_by_full_hash(partial_groups, mid_stage_state=mid_stage)
+            full_groups = self.group_by_full_hash(partial_groups, mid_stage_state=mid_stage,
+                                                  cache_lookup=cache_lookup, cache_store=cache_store)
         elif "full" in stages and size_groups and "partial" not in stages:
             full_groups = self.group_by_full_hash(
                 {str(sz): paths for sz, paths in size_groups.items()},
                 mid_stage_state=mid_stage,
+                cache_lookup=cache_lookup, cache_store=cache_store,
             )
         elif "full" in stages:
             self._emit("full", 100.0, "No candidates to full-hash", 0)

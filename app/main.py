@@ -78,6 +78,15 @@ def init_db():
                 original_dir TEXT NOT NULL DEFAULT ''
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_hash_cache (
+                path       TEXT PRIMARY KEY,
+                size_bytes INTEGER NOT NULL,
+                mtime      REAL NOT NULL,
+                full_hash  TEXT NOT NULL,
+                cached_at  REAL NOT NULL
+            )
+        """)
         conn.commit()
         conn.execute(
             "UPDATE jobs SET status='interrupted', error='Server was restarted' WHERE status='running'"
@@ -127,6 +136,51 @@ def db_get_analytics(recent_limit: int = 200) -> dict:
         "binned_bytes":   row["binned_bytes"],
         "recent":         [dict(r) for r in recent],
     }
+
+
+def cache_lookup(path: str, size: int, mtime: float) -> Optional[str]:
+    """Return cached full hash if path/size/mtime still match, else None."""
+    with _db_lock:
+        conn = _db_conn()
+        row = conn.execute(
+            "SELECT full_hash FROM file_hash_cache WHERE path=? AND size_bytes=? AND mtime=?",
+            (path, size, mtime),
+        ).fetchone()
+        conn.close()
+    return row["full_hash"] if row else None
+
+
+def cache_store(entries: list):
+    """Upsert list of (path, size, mtime, hash) tuples into the cache."""
+    now = time.time()
+    with _db_lock:
+        conn = _db_conn()
+        conn.executemany(
+            """INSERT INTO file_hash_cache (path, size_bytes, mtime, full_hash, cached_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(path) DO UPDATE SET
+                 size_bytes=excluded.size_bytes, mtime=excluded.mtime,
+                 full_hash=excluded.full_hash, cached_at=excluded.cached_at""",
+            [(p, sz, mt, h, now) for p, sz, mt, h in entries],
+        )
+        conn.commit()
+        conn.close()
+
+
+def db_get_cache_stats() -> dict:
+    with _db_lock:
+        conn = _db_conn()
+        row = conn.execute("SELECT COUNT(*) AS cnt FROM file_hash_cache").fetchone()
+        conn.close()
+    return {"cached_files": row["cnt"]}
+
+
+def db_clear_cache():
+    with _db_lock:
+        conn = _db_conn()
+        conn.execute("DELETE FROM file_hash_cache")
+        conn.commit()
+        conn.close()
 
 
 def db_create_job(job_id: str, path: str, stages: List[str]):
@@ -368,7 +422,8 @@ def _run_scan(job_id: str, path, stages: List[str], checkpoints: dict):
 
     try:
         scanner = DuplicateScanner(callback=progress_callback, checkpoint_callback=checkpoint_callback)
-        results = scanner.scan(path, stages, checkpoints=checkpoints)
+        results = scanner.scan(path, stages, checkpoints=checkpoints,
+                               cache_lookup=cache_lookup, cache_store=cache_store)
         results["scan_roots"] = path
         results["scan_root"]  = path[0] if path else ""  # backward compat
         jobs[job_id]["results"] = results
@@ -520,7 +575,15 @@ async def get_thumbnail(path: str = Query(...), size: int = Query(200)):
 
 @app.get("/analytics")
 async def get_analytics():
-    return db_get_analytics()
+    data = db_get_analytics()
+    data.update(db_get_cache_stats())
+    return data
+
+
+@app.delete("/cache")
+async def clear_cache():
+    db_clear_cache()
+    return {"ok": True}
 
 
 @app.post("/files/delete")

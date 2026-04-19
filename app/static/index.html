@@ -1001,6 +1001,10 @@
     </h2>
     <div id="analytics-body">
       <div id="analytics-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px"></div>
+      <div id="analytics-cache-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+        <span style="font-size:0.85rem;color:var(--text-dim)">Hash cache: <strong id="analytics-cache-count" style="color:var(--text)">—</strong> files</span>
+        <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="clearHashCache()">Clear Cache</button>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:0.8rem;color:var(--text-dim)">Recent file history (last 200)</span>
         <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="loadAnalytics()">Refresh</button>
@@ -1278,6 +1282,9 @@
       if (!res.ok) return;
       const d = await res.json();
 
+      document.getElementById('analytics-cache-count').textContent =
+        (d.cached_files || 0).toLocaleString();
+
       const summary = document.getElementById('analytics-summary');
       summary.innerHTML = `
         <div class="bulk-stat"><div class="bv">${d.total_files.toLocaleString()}</div><div class="bl">Total files removed</div></div>
@@ -1308,6 +1315,17 @@
         </tr>`;
       }).join('');
     } catch (_) {}
+  }
+
+  async function clearHashCache() {
+    if (!confirm('Clear the hash cache? The next scan will re-hash all files.')) return;
+    try {
+      await fetch('/cache', { method: 'DELETE' });
+      showToast('Hash cache cleared.', 'success');
+      loadAnalytics();
+    } catch (e) {
+      showToast('Could not clear cache.', 'error');
+    }
   }
 
   // ── Recent Jobs ────────────────────────────────────────────────────────────
