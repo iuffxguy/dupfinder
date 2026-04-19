@@ -11,7 +11,9 @@
       "Bash(docker buildx:*)",
       "Bash(which gh:*)",
       "Bash(gh auth:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(gh repo:*)",
+      "Bash(git add:*)"
     ]
   }
 }
