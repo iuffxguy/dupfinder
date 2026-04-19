@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DupFinder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface2:    #22263a;
+      --border:      #2e3350;
+      --accent:      #5b8dee;
+      --accent-dim:  #3a5ba0;
+      --success:     #3ecf8e;
+      --warning:     #f5a623;
+      --danger:      #e05c5c;
+      --text:        #e2e8f0;
+      --text-dim:    #7c87a6;
+      --text-faint:  #4a5270;
+      --radius:      8px;
+      --radius-lg:   14px;
+      --shadow:      0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Layout ── */
+    .layout {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 20px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      padding: 40px 0 32px;
+    }
+    header h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #5b8dee, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--text-dim);
+      font-size: 1rem;
+      margin-top: 6px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    /* ── Form elements ── */
+    label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+
+    .stages {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .stage-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .stage-item input[type="checkbox"] {
+      margin-top: 2px;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .stage-item .stage-label { font-size: 0.9rem; }
+    .stage-item .stage-label strong { color: var(--text); }
+    .stage-item .stage-label span { color: var(--text-dim); font-size: 0.82rem; }
+
+    /* ── Button ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { opacity: 0.8; }
+
+    .scan-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 22px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Progress ── */
+    #progress-section { display: none; }
+
+    .stage-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .pill {
+      padding: 4px 14px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid var(--border);
+      color: var(--text-faint);
+      background: var(--surface2);
+      transition: all 0.3s;
+    }
+    .pill.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .pill.done {
+      background: var(--success);
+      border-color: var(--success);
+      color: #fff;
+    }
+
+    .progress-bar-wrap {
+      background: var(--bg);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), #a78bfa);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    .progress-msg {
+      font-size: 0.875rem;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    .live-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .stat-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .stat-box .stat-val {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .stat-box .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Results ── */
+    #results-section { display: none; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .summary-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .summary-card .s-val {
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .summary-card .s-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .summary-card.accent .s-val { color: var(--accent); }
+    .summary-card.warn .s-val   { color: var(--warning); }
+    .summary-card.danger .s-val { color: var(--danger); }
+
+    .results-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .results-toolbar h3 {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    /* ── Duplicate groups accordion ── */
+    .dup-group {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .dup-group-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .dup-group-header:hover { background: rgba(91,141,238,0.07); }
+
+    .dup-group-header .toggle-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: var(--text-faint);
+      transition: transform 0.2s;
+    }
+    .dup-group.open .toggle-icon { transform: rotate(90deg); }
+
+    .dup-group-header .g-name {
+      flex: 1;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dup-group-header .g-meta {
+      display: flex;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .g-badge {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .g-badge.red   { color: var(--danger);  border-color: #6b2f2f; background: #2a1515; }
+    .g-badge.blue  { color: var(--accent);  border-color: #2a3d6b; background: #141d35; }
+
+    .dup-group-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+    }
+    .dup-group.open .dup-group-body { display: block; }
+
+    .file-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .file-row:last-child { border-bottom: none; }
+
+    .file-row input[type="checkbox"] {
+      margin-top: 3px;
+      flex-shrink: 0;
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-dir {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      font-family: "SF Mono", "Fira Code", monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .file-size-tag {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      flex-shrink: 0;
+      padding: 2px 8px;
+      background: var(--surface);
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      align-self: center;
+    }
+
+    /* ── Empty / error states ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-dim);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 1.1rem; color: var(--text); margin-bottom: 6px; }
+    .empty-state p { font-size: 0.875rem; }
+
+    .error-banner {
+      background: #2a1515;
+      border: 1px solid #6b2f2f;
+      border-radius: var(--radius);
+      color: var(--danger);
+      padding: 14px 16px;
+      font-size: 0.875rem;
+      margin-bottom: 14px;
+    }
+
+    /* ── Scrollable group list ── */
+    #groups-list {
+      max-height: 60vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    #groups-list::-webkit-scrollbar { width: 6px; }
+    #groups-list::-webkit-scrollbar-track { background: transparent; }
+    #groups-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Modal overlay ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.6);
+      width: min(900px, 94vw);
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .modal-header h2 {
+      flex: 1;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: none;
+      letter-spacing: 0;
+      margin: 0;
+    }
+    .modal-header .modal-meta {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .modal-close {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 4px 10px;
+      font-size: 1.1rem;
+      line-height: 1;
+      transition: background 0.15s;
+    }
+    .modal-close:hover { background: var(--surface2); color: var(--text); }
+
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 22px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .modal-footer .footer-hint {
+      flex: 1;
+      font-size: 0.78rem;
+      color: var(--text-faint);
+    }
+
+    /* ── Folder browser ── */
+    .browser-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+    }
+    .browser-overlay.open { display: flex; }
+
+    .browser-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.6);
+      width: min(560px, 94vw);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .browser-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .browser-header h2 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 0;
+      flex-shrink: 0;
+    }
+
+    .browser-crumb {
+      flex: 1;
+      font-size: 0.8rem;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      direction: rtl;
+      text-align: left;
+    }
+
+    .browser-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px 0;
+    }
+    .browser-list::-webkit-scrollbar { width: 6px; }
+    .browser-list::-webkit-scrollbar-track { background: transparent; }
+    .browser-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .browser-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: background 0.12s;
+      font-size: 0.9rem;
+      color: var(--text);
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .browser-item:hover { background: rgba(91,141,238,0.08); }
+    .browser-item .dir-icon { font-size: 1rem; flex-shrink: 0; }
+    .browser-item .dir-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .browser-item .dir-arrow { color: var(--text-faint); font-size: 0.75rem; flex-shrink: 0; }
+    .browser-item.up-item { color: var(--text-dim); border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+
+    .browser-empty {
+      text-align: center;
+      padding: 32px;
+      color: var(--text-faint);
+      font-size: 0.875rem;
+    }
+
+    .browser-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .browser-current-path {
+      flex: 1;
+      font-size: 0.78rem;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Path input row ── */
+    .path-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .path-row input { flex: 1; }
+    .btn-browse {
+      flex-shrink: 0;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .btn-browse:hover { background: var(--border); color: var(--text); }
+
+    /* ── Confirm overlay ── */
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .confirm-overlay.open { display: flex; }
+    .confirm-box {
+      background: var(--surface);
+      border: 1px solid #6b2f2f;
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      max-width: 420px;
+      width: 90vw;
+      text-align: center;
+    }
+    .confirm-box h3 {
+      color: var(--danger);
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+    }
+    .confirm-box p {
+      color: var(--text-dim);
+      font-size: 0.875rem;
+      margin-bottom: 22px;
+      line-height: 1.6;
+    }
+    .confirm-box .confirm-files {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-align: left;
+      max-height: 120px;
+      overflow-y: auto;
+      margin-bottom: 22px;
+    }
+    .confirm-actions { display: flex; gap: 10px; justify-content: center; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.85; }
+
+    /* ── Delete result toast ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      font-size: 0.875rem;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      z-index: 3000;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error   { border-color: var(--danger);  color: var(--danger); }
+
+    /* kept-file highlight */
+    .file-row.kept { background: rgba(62,207,142,0.06); border-radius: var(--radius); }
+    .kept-badge {
+      font-size: 0.68rem;
+      color: var(--success);
+      border: 1px solid var(--success);
+      border-radius: 4px;
+      padding: 1px 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      align-self: center;
+    }
+
+    .modal-body {
+      overflow-y: auto;
+      padding: 22px;
+      flex: 1;
+    }
+    .modal-body::-webkit-scrollbar { width: 6px; }
+    .modal-body::-webkit-scrollbar-track { background: transparent; }
+    .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Thumbnail grid ── */
+    .thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .thumb-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s;
+    }
+    .thumb-item:hover { border-color: var(--accent); }
+
+    .thumb-img-wrap {
+      width: 100%;
+      aspect-ratio: 1;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    .thumb-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .thumb-img-wrap .thumb-placeholder {
+      font-size: 2.8rem;
+      opacity: 0.3;
+    }
+    .thumb-img-wrap .thumb-loading {
+      font-size: 0.75rem;
+      color: var(--text-faint);
+    }
+    .thumb-img-wrap .thumb-error {
+      font-size: 0.7rem;
+      color: var(--danger);
+      text-align: center;
+      padding: 8px;
+    }
+
+    .thumb-caption {
+      padding: 8px 10px;
+      border-top: 1px solid var(--border);
+    }
+    .thumb-caption .thumb-name {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .thumb-caption .thumb-dir {
+      font-size: 0.68rem;
+      color: var(--text-faint);
+      font-family: "SF Mono", "Fira Code", monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    /* ── Modal file list ── */
+    .modal-file-list { margin-top: 4px; }
+    .modal-file-list h3 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-faint);
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Header -->
+  <header>
+    <h1>DupFinder</h1>
+    <p>Duplicate Media File Finder</p>
+  </header>
+
+  <!-- Scan Config -->
+  <div class="card">
+    <h2>Scan Configuration</h2>
+
+    <label for="scan-path">Folder path</label>
+    <div class="path-row">
+      <input type="text" id="scan-path" placeholder="/mnt/user/media" autocomplete="off" spellcheck="false" />
+      <button class="btn-browse" onclick="openBrowser()">📁 Browse</button>
+    </div>
+
+    <div class="stages">
+      <label class="stage-item">
+        <input type="checkbox" id="stage-size" checked />
+        <div class="stage-label">
+          <strong>Stage 1 — Group by file size</strong><br>
+          <span>Fast first pass; groups files sharing the same byte size</span>
+        </div>
+      </label>
+      <label class="stage-item">
+        <input type="checkbox" id="stage-partial" checked />
+        <div class="stage-label">
+          <strong>Stage 2 — Partial hash verification</strong><br>
+          <span>Hashes the first 64 KB of each candidate to narrow down real duplicates</span>
+        </div>
+      </label>
+      <label class="stage-item">
+        <input type="checkbox" id="stage-full" checked />
+        <div class="stage-label">
+          <strong>Stage 3 — Full hash (exact duplicates)</strong><br>
+          <span>Reads every byte; confirms files are byte-for-byte identical</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="scan-actions">
+      <button class="btn btn-primary" id="start-btn" onclick="startScan()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        Start Scan
+      </button>
+      <button class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="cancelScan()">
+        Stop
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="card" id="progress-section">
+    <h2>Progress</h2>
+
+    <div class="stage-pills">
+      <div class="pill" id="pill-size">Size</div>
+      <div class="pill" id="pill-partial">Partial Hash</div>
+      <div class="pill" id="pill-full">Full Hash</div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progress-bar"></div>
+    </div>
+
+    <div class="progress-msg" id="progress-msg">Initializing…</div>
+
+    <div class="live-stats">
+      <div class="stat-box">
+        <div class="stat-val" id="stat-groups">0</div>
+        <div class="stat-label">Duplicate Groups</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-stage">—</div>
+        <div class="stat-label">Current Stage</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card" id="results-section">
+    <h2>Results</h2>
+
+    <div id="error-area"></div>
+
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <div class="results-toolbar">
+      <h3 id="groups-label">Duplicate groups</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="export-btn" onclick="exportResults()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zm-14 9v2h14v-2H5z"/></svg>
+          Export JSON
+        </button>
+      </div>
+    </div>
+
+    <div id="groups-list"></div>
+  </div>
+
+</div>
+
+<!-- Folder Browser Modal -->
+<div class="browser-overlay" id="browser-overlay" onclick="handleBrowserOverlayClick(event)">
+  <div class="browser-modal">
+    <div class="browser-header">
+      <h2>Browse</h2>
+      <span class="browser-crumb" id="browser-crumb">/</span>
+      <button class="modal-close" onclick="closeBrowser()">✕</button>
+    </div>
+    <div class="browser-list" id="browser-list"></div>
+    <div class="browser-footer">
+      <span class="browser-current-path" id="browser-current-path"></span>
+      <button class="btn btn-secondary" onclick="closeBrowser()">Cancel</button>
+      <button class="btn btn-primary" onclick="selectCurrentFolder()">Select This Folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Thumbnail Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Duplicate Group</h2>
+      <div class="modal-meta">
+        <span class="g-badge blue" id="modal-count"></span>
+        <span class="g-badge" id="modal-size"></span>
+        <span class="g-badge red" id="modal-wasted"></span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="thumb-grid" id="modal-thumb-grid"></div>
+      <div class="modal-file-list">
+        <h3>All files in this group</h3>
+        <div id="modal-file-rows"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span class="footer-hint">Check files to remove, or use auto-select.</span>
+      <button class="btn btn-secondary" onclick="autoSelectDuplicates()">Keep First, Delete Rest</button>
+      <button class="btn btn-secondary" onclick="promptAction('bin')">Move to Bin</button>
+      <button class="btn btn-danger btn" onclick="promptAction('delete')">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3 id="confirm-box-title">Permanently delete files?</h3>
+    <p id="confirm-box-desc">This cannot be undone. The following files will be removed from disk:</p>
+    <div class="confirm-files" id="confirm-file-list"></div>
+    <div class="confirm-actions">
+      <button class="btn btn-secondary" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger btn" id="confirm-action-btn" onclick="confirmAction()">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let currentJobId = null;
+  let eventSource  = null;
+  let lastResults  = null;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function fmtSize(bytes) {
+    if (bytes == null) return '—';
+    if (bytes < 1024)        return bytes + ' B';
+    if (bytes < 1048576)     return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824)  return (bytes / 1048576).toFixed(2) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function stageLabel(stage) {
+    const map = { size:'Size', partial:'Partial Hash', full:'Full Hash', done:'Complete', error:'Error', starting:'Starting' };
+    return map[stage] || stage;
+  }
+
+  // ── Pill management ────────────────────────────────────────────────────────
+  const STAGE_ORDER = ['size', 'partial', 'full'];
+
+  function updatePills(activeStage) {
+    STAGE_ORDER.forEach(s => {
+      const pill = document.getElementById('pill-' + s);
+      pill.classList.remove('active', 'done');
+    });
+    if (activeStage === 'done') {
+      STAGE_ORDER.forEach(s => document.getElementById('pill-' + s).classList.add('done'));
+      return;
+    }
+    let found = false;
+    for (const s of STAGE_ORDER) {
+      if (s === activeStage) { found = true; document.getElementById('pill-' + s).classList.add('active'); }
+      else if (!found)        document.getElementById('pill-' + s).classList.add('done');
+    }
+  }
+
+  // ── Scan lifecycle ─────────────────────────────────────────────────────────
+  async function startScan() {
+    const path   = document.getElementById('scan-path').value.trim();
+    const stages = [];
+    if (document.getElementById('stage-size').checked)    stages.push('size');
+    if (document.getElementById('stage-partial').checked) stages.push('partial');
+    if (document.getElementById('stage-full').checked)    stages.push('full');
+
+    if (!path) { alert('Please enter a folder path.'); return; }
+    if (!stages.length) { alert('Please select at least one stage.'); return; }
+
+    // Reset UI
+    document.getElementById('start-btn').disabled = true;
+    document.getElementById('cancel-btn').style.display = 'inline-flex';
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('results-section').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('progress-msg').textContent = 'Starting…';
+    document.getElementById('stat-groups').textContent = '0';
+    document.getElementById('stat-stage').textContent = '—';
+    document.getElementById('error-area').innerHTML = '';
+    STAGE_ORDER.forEach(s => {
+      const p = document.getElementById('pill-' + s);
+      p.classList.remove('active','done');
+    });
+
+    try {
+      const res = await fetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, stages }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      currentJobId = data.job_id;
+      listenProgress(currentJobId);
+    } catch (e) {
+      showError(e.message);
+      resetScanBtn();
+    }
+  }
+
+  function listenProgress(jobId) {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+
+    eventSource = new EventSource(`/scan/${jobId}/progress`);
+
+    eventSource.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        document.getElementById('progress-bar').style.width  = d.progress + '%';
+        document.getElementById('progress-msg').textContent  = d.message || '';
+        document.getElementById('stat-groups').textContent   = d.found || 0;
+        document.getElementById('stat-stage').textContent    = stageLabel(d.stage);
+        updatePills(d.stage);
+
+        if (d.status === 'done') {
+          eventSource.close();
+          fetchResults(jobId);
+        } else if (d.status === 'error') {
+          eventSource.close();
+          showError(d.message || 'An unknown error occurred during scan.');
+          resetScanBtn();
+        }
+      } catch (_) {}
+    };
+
+    eventSource.onerror = () => {
+      // SSE closed after 'done' is normal; ignore if job finished
+      if (eventSource) { eventSource.close(); eventSource = null; }
+    };
+  }
+
+  function cancelScan() {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    currentJobId = null;
+    resetScanBtn();
+    document.getElementById('progress-msg').textContent = 'Scan cancelled.';
+  }
+
+  async function fetchResults(jobId) {
+    try {
+      const res = await fetch(`/scan/${jobId}/results`);
+      if (!res.ok) throw new Error('Failed to fetch results.');
+      lastResults = await res.json();
+      renderResults(lastResults);
+    } catch (e) {
+      showError(e.message);
+    }
+    resetScanBtn();
+  }
+
+  function resetScanBtn() {
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('cancel-btn').style.display = 'none';
+  }
+
+  // ── Render results ─────────────────────────────────────────────────────────
+  function renderResults(data) {
+    const sec = document.getElementById('results-section');
+    sec.style.display = 'block';
+
+    // Summary cards
+    const grid = document.getElementById('summary-grid');
+    grid.innerHTML = `
+      <div class="summary-card accent">
+        <div class="s-val">${data.group_count}</div>
+        <div class="s-label">Duplicate Groups</div>
+      </div>
+      <div class="summary-card warn">
+        <div class="s-val">${data.total_files}</div>
+        <div class="s-label">Duplicate Files</div>
+      </div>
+      <div class="summary-card danger">
+        <div class="s-val">${fmtSize(data.total_wasted_bytes)}</div>
+        <div class="s-label">Wasted Space</div>
+      </div>
+    `;
+
+    document.getElementById('groups-label').textContent =
+      `${data.group_count} duplicate group${data.group_count !== 1 ? 's' : ''}`;
+
+    const list = document.getElementById('groups-list');
+
+    if (!data.groups || data.groups.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">✓</div>
+          <h3>No duplicates found</h3>
+          <p>All scanned media files appear to be unique.</p>
+        </div>`;
+      return;
+    }
+
+    // Sort groups by wasted bytes desc
+    const sorted = [...data.groups].sort((a, b) => b.wasted_bytes - a.wasted_bytes);
+
+    list.innerHTML = sorted.map((group, idx) => {
+      const firstName = group.files[0]?.name || '(unknown)';
+      const filesHtml = group.files.map((f, fi) => `
+        <div class="file-row">
+          <input type="checkbox" id="chk-${idx}-${fi}" title="Mark for review" />
+          <div class="file-info">
+            <div class="file-name" title="${esc(f.path)}">${esc(f.name)}</div>
+            <div class="file-dir">${esc(f.directory)}</div>
+          </div>
+          <div class="file-size-tag">${fmtSize(f.size)}</div>
+        </div>
+      `).join('');
+
+      return `
+        <div class="dup-group" id="group-${idx}">
+          <div class="dup-group-header" onclick="openModal(${idx})">
+            <svg class="toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7V5z"/></svg>
+            <div class="g-name" title="${esc(firstName)}">${esc(firstName)}</div>
+            <div class="g-meta">
+              <span class="g-badge blue">${group.file_count} copies</span>
+              <span class="g-badge">${fmtSize(group.file_size)} each</span>
+              <span class="g-badge red">−${fmtSize(group.wasted_bytes)}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Modal ──────────────────────────────────────────────────────────────────
+  const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif']);
+  let currentModalGroup = null;  // the group object currently open
+
+  function isImage(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    return IMAGE_EXTS.has(ext);
+  }
+
+  function openModal(idx) {
+    if (!lastResults || !lastResults.groups) return;
+    const sorted = [...lastResults.groups].sort((a, b) => b.wasted_bytes - a.wasted_bytes);
+    const group  = sorted[idx];
+    if (!group) return;
+    currentModalGroup = group;
+
+    // Header meta
+    document.getElementById('modal-title').textContent   = group.files[0]?.name || 'Duplicate Group';
+    document.getElementById('modal-count').textContent   = group.file_count + ' copies';
+    document.getElementById('modal-size').textContent    = fmtSize(group.file_size) + ' each';
+    document.getElementById('modal-wasted').textContent  = '−' + fmtSize(group.wasted_bytes);
+
+    // Thumbnail grid
+    const grid = document.getElementById('modal-thumb-grid');
+    grid.innerHTML = group.files.map((f, fi) => {
+      const img = isImage(f.name);
+      const thumbSrc = img ? `/thumbnail?path=${encodeURIComponent(f.path)}&size=300` : null;
+      const imgTag = img
+        ? `<img src="${thumbSrc}" alt="${esc(f.name)}" onerror="this.parentNode.innerHTML='<span class=thumb-error>Preview unavailable</span>'" />`
+        : `<span class="thumb-placeholder">${fileIcon(f.name)}</span>`;
+
+      return `
+        <div class="thumb-item">
+          <div class="thumb-img-wrap">${imgTag}</div>
+          <div class="thumb-caption">
+            <div class="thumb-name" title="${esc(f.path)}">${esc(f.name)}</div>
+            <div class="thumb-dir">${esc(f.directory)}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    renderModalFileRows(group);
+
+    document.getElementById('modal-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function renderModalFileRows(group) {
+    const rows = document.getElementById('modal-file-rows');
+    rows.innerHTML = group.files.map((f, fi) => {
+      const isFirst = fi === 0;
+      return `
+        <div class="file-row${isFirst ? ' kept' : ''}" id="modal-row-${fi}">
+          <input type="checkbox" id="mchk-${fi}" ${isFirst ? '' : ''} title="Mark for deletion" />
+          <div class="file-info">
+            <div class="file-name" title="${esc(f.path)}">${esc(f.name)}</div>
+            <div class="file-dir">${esc(f.directory)}</div>
+          </div>
+          <div class="file-size-tag">${fmtSize(f.size)}</div>
+          ${isFirst ? '<span class="kept-badge">keep</span>' : ''}
+        </div>`;
+    }).join('');
+  }
+
+  function autoSelectDuplicates() {
+    if (!currentModalGroup) return;
+    currentModalGroup.files.forEach((_, fi) => {
+      const chk = document.getElementById('mchk-' + fi);
+      if (chk) chk.checked = fi !== 0;  // keep first, check the rest
+    });
+  }
+
+  function getCheckedPaths() {
+    if (!currentModalGroup) return [];
+    return currentModalGroup.files
+      .filter((_, fi) => document.getElementById('mchk-' + fi)?.checked)
+      .map(f => f.path);
+  }
+
+  let pendingAction = null;  // 'delete' or 'bin'
+
+  function promptAction(action) {
+    const paths = getCheckedPaths();
+    if (paths.length === 0) {
+      showToast('No files checked.', 'error');
+      return;
+    }
+    if (paths.length >= currentModalGroup.files.length) {
+      showToast('You must keep at least one file in the group.', 'error');
+      return;
+    }
+    pendingAction = action;
+    const label = action === 'bin' ? 'Move to duplicate bin' : 'Permanently delete';
+    document.getElementById('confirm-box-title').textContent = action === 'bin'
+      ? 'Move files to duplicate bin?'
+      : 'Permanently delete files?';
+    document.getElementById('confirm-box-desc').textContent = action === 'bin'
+      ? `These files will be moved to _duplicate_bin inside your scan folder:`
+      : `This cannot be undone. The following files will be removed from disk:`;
+    document.getElementById('confirm-file-list').textContent = paths.join('\n');
+    document.getElementById('confirm-action-btn').textContent = action === 'bin' ? 'Yes, Move to Bin' : 'Yes, Delete';
+    document.getElementById('confirm-overlay').classList.add('open');
+  }
+
+  function closeConfirm() {
+    document.getElementById('confirm-overlay').classList.remove('open');
+    pendingAction = null;
+  }
+
+  async function confirmAction() {
+    const paths = getCheckedPaths();
+    const action = pendingAction;
+    closeConfirm();
+
+    try {
+      let res, data;
+      if (action === 'delete') {
+        res  = await fetch('/files/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths }) });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Delete failed');
+        const removedSet = new Set(data.results.filter(r => r.status === 'deleted').map(r => r.path));
+        applyRemovals(removedSet);
+        showToast(
+          data.errors.length ? `Deleted ${data.deleted} file(s). ${data.errors.length} error(s).` : `Deleted ${data.deleted} file(s).`,
+          data.errors.length ? 'error' : 'success'
+        );
+      } else {
+        res  = await fetch('/files/move-to-bin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths, scan_root: lastResults.scan_root }) });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Move failed');
+        const removedSet = new Set(data.results.filter(r => r.status === 'moved').map(r => r.path));
+        applyRemovals(removedSet);
+        showToast(
+          data.errors.length ? `Moved ${data.moved} file(s). ${data.errors.length} error(s).` : `Moved ${data.moved} file(s) to _duplicate_bin.`,
+          data.errors.length ? 'error' : 'success'
+        );
+      }
+    } catch (e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+  }
+
+  function applyRemovals(removedSet) {
+    // Save reference before closeModal nulls it
+    const group = currentModalGroup;
+    group.files = group.files.filter(f => !removedSet.has(f.path));
+    group.file_count = group.files.length;
+
+    if (group.files.length <= 1) {
+      closeModal();
+      lastResults.groups = lastResults.groups.filter(g => g !== group);
+      lastResults.group_count = lastResults.groups.length;
+      renderResults(lastResults);
+    } else {
+      renderModalFileRows(group);
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+    currentModalGroup = null;
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  }
+
+  function fileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    if (['mp4','mkv','avi','mov','wmv','flv','m4v'].includes(ext)) return '🎬';
+    if (['mp3','flac','wav','aac','m4a','ogg','opus','wma'].includes(ext)) return '🎵';
+    return '📄';
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast ${type} show`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (document.getElementById('confirm-overlay').classList.contains('open')) closeConfirm();
+      else closeModal();
+    }
+  });
+
+  // ── Expand/Collapse (no-op, kept for export toolbar) ──────────────────────
+  function expandAll()   {}
+  function collapseAll() {}
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  function exportResults() {
+    if (!lastResults) return;
+    const blob = new Blob([JSON.stringify(lastResults, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'dupfinder-results.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Error ──────────────────────────────────────────────────────────────────
+  function showError(msg) {
+    const sec = document.getElementById('results-section');
+    sec.style.display = 'block';
+    document.getElementById('error-area').innerHTML =
+      `<div class="error-banner"><strong>Error:</strong> ${esc(msg)}</div>`;
+    document.getElementById('summary-grid').innerHTML = '';
+    document.getElementById('groups-list').innerHTML  = '';
+  }
+
+  // ── Folder browser ─────────────────────────────────────────────────────────
+  let browserCurrentPath = '/';
+
+  async function openBrowser() {
+    const existing = document.getElementById('scan-path').value.trim();
+    await browseTo(existing || '/');
+    document.getElementById('browser-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeBrowser() {
+    document.getElementById('browser-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function handleBrowserOverlayClick(e) {
+    if (e.target === document.getElementById('browser-overlay')) closeBrowser();
+  }
+
+  function selectCurrentFolder() {
+    document.getElementById('scan-path').value = browserCurrentPath;
+    closeBrowser();
+  }
+
+  async function browseTo(path) {
+    const list = document.getElementById('browser-list');
+    list.innerHTML = '<div class="browser-empty">Loading…</div>';
+    try {
+      const res  = await fetch('/browse?path=' + encodeURIComponent(path));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        list.innerHTML = `<div class="browser-empty">${esc(err.detail || 'Could not open folder')}</div>`;
+        return;
+      }
+      const data = await res.json();
+      browserCurrentPath = data.current;
+      document.getElementById('browser-crumb').textContent        = data.current;
+      document.getElementById('browser-current-path').textContent = data.current;
+
+      let html = '';
+      if (data.parent !== null) {
+        html += `<button class="browser-item up-item" onclick="browseTo('${esc(data.parent)}')">
+          <span class="dir-icon">↑</span>
+          <span class="dir-name">.. (up a level)</span>
+        </button>`;
+      }
+      if (data.dirs.length === 0) {
+        html += '<div class="browser-empty">No subdirectories here</div>';
+      } else {
+        html += data.dirs.map(d => `
+          <button class="browser-item" onclick="browseTo('${esc(d.path)}')">
+            <span class="dir-icon">📁</span>
+            <span class="dir-name">${esc(d.name)}</span>
+            <span class="dir-arrow">›</span>
+          </button>`).join('');
+      }
+      list.innerHTML = html;
+    } catch (e) {
+      list.innerHTML = `<div class="browser-empty">Error: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // ── Enter key on path input ────────────────────────────────────────────────
+  document.getElementById('scan-path').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startScan();
+  });
+</script>
+</body>
+</html>

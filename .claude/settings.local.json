@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(python3:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker login:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker buildx:*)",
+      "Bash(which gh:*)",
+      "Bash(gh auth:*)",
+      "Bash(git init:*)"
+    ]
+  }
+}

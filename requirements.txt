@@ -1,0 +1,6 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+xxhash==3.4.1
+python-multipart==0.0.9
+aiofiles==23.2.1
+Pillow==10.4.0
