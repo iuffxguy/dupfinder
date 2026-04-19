@@ -179,8 +179,10 @@ class DuplicateScanner:
             self._emit("full", 0.0, f"Full-hashing {total_files} candidate files", 0)
 
         MID_CHECKPOINT_EVERY = 100
+        CACHE_FLUSH_BYTES = 100 << 20  # flush cache after every 100 MB of hashed data
         cache_hits = 0
         pending_cache_writes: list = []
+        pending_cache_bytes = 0
 
         for step, fpath in enumerate(remaining):
             global_idx = done_count + step
@@ -217,6 +219,7 @@ class DuplicateScanner:
                     try:
                         st = os.stat(fpath)
                         pending_cache_writes.append((fpath, st.st_size, st.st_mtime, h))
+                        pending_cache_bytes += st.st_size
                     except (OSError, PermissionError):
                         pass
 
@@ -225,10 +228,11 @@ class DuplicateScanner:
                        f"Full hash\u2026 {global_idx + 1}/{total_files}"
                        + (f" ({cache_hits} cached)" if cache_hits else ""), 0)
 
-            # Flush cache writes every 50 files
-            if cache_store and len(pending_cache_writes) >= 50:
+            # Flush cache once we've accumulated 100 MB of hashed data
+            if cache_store and pending_cache_bytes >= CACHE_FLUSH_BYTES:
                 cache_store(pending_cache_writes)
                 pending_cache_writes.clear()
+                pending_cache_bytes = 0
 
             # Save mid-stage checkpoint every N files
             if (step + 1) % MID_CHECKPOINT_EVERY == 0:
