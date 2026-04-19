@@ -24,13 +24,28 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── Database ─────────────────────────────────────────────────────────────────
-DATA_DIR = Path(os.environ.get("DUPFINDER_DATA", "/data/.dupfinder"))
+def _resolve_data_dir() -> Path:
+    preferred = Path(os.environ.get("DUPFINDER_DATA", "/data/.dupfinder"))
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        # Verify it's actually writable
+        test = preferred / ".write_test"
+        test.touch()
+        test.unlink()
+        return preferred
+    except Exception:
+        # Fall back to a temp directory so the server always starts
+        import tempfile
+        fallback = Path(tempfile.gettempdir()) / "dupfinder"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+DATA_DIR = _resolve_data_dir()
 DB_PATH  = DATA_DIR / "jobs.db"
 _db_lock = threading.Lock()
 
 
 def _db_conn():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
