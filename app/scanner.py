@@ -92,17 +92,20 @@ class DuplicateScanner:
     def _emit(self, stage: str, progress: float, message: str, found: int):
         self.callback(stage, progress, message, found)
 
-    def group_by_size(self, path: str) -> Dict[int, List[str]]:
+    def group_by_size(self, paths) -> Dict[int, List[str]]:
+        if isinstance(paths, str):
+            paths = [paths]
         size_map: Dict[int, List[str]] = defaultdict(list)
         all_files: List[str] = []
 
-        for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
-            # Skip the duplicate bin so we never scan files moved there
-            dirnames[:] = [d for d in dirnames if d != DUP_BIN_NAME]
-            for fname in filenames:
-                full = os.path.join(dirpath, fname)
-                if _is_media_file(full):
-                    all_files.append(full)
+        for root_path in paths:
+            for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
+                # Skip the duplicate bin so we never scan files moved there
+                dirnames[:] = [d for d in dirnames if d != DUP_BIN_NAME]
+                for fname in filenames:
+                    full = os.path.join(dirpath, fname)
+                    if _is_media_file(full):
+                        all_files.append(full)
 
         total = len(all_files)
         self._emit("size", 0.0, f"Found {total} media files to examine", 0)
@@ -205,7 +208,10 @@ class DuplicateScanner:
                    len(groups))
         return groups
 
-    def scan(self, path: str, stages: List[str], checkpoints: dict = None) -> Dict:
+    def scan(self, path, stages: List[str], checkpoints: dict = None) -> Dict:
+        # Accept either a single path string or a list of paths
+        if isinstance(path, str):
+            path = [path]
         if checkpoints is None:
             checkpoints = {}
 
@@ -272,9 +278,12 @@ class DuplicateScanner:
         else:
             final_groups = {str(sz): paths for sz, paths in size_groups.items()}
 
-        return self._build_results(final_groups, path)
+        return self._build_results(final_groups, path)  # path is now a list
 
-    def _build_results(self, groups: Dict[str, List[str]], root: str) -> Dict:
+    def _build_results(self, groups: Dict[str, List[str]], root) -> Dict:
+        # root may be a list of paths or a single string
+        if isinstance(root, str):
+            root = [root]
         duplicate_groups = []
         total_wasted = 0
 

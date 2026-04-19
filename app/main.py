@@ -68,12 +68,65 @@ def init_db():
                 error       TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS deletions (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp    REAL NOT NULL,
+                action       TEXT NOT NULL,
+                path         TEXT NOT NULL,
+                size_bytes   INTEGER NOT NULL DEFAULT 0,
+                original_dir TEXT NOT NULL DEFAULT ''
+            )
+        """)
         conn.commit()
         conn.execute(
             "UPDATE jobs SET status='interrupted', error='Server was restarted' WHERE status='running'"
         )
         conn.commit()
         conn.close()
+
+
+def db_record_deletions(records: list):
+    """records: list of dicts with timestamp, action, path, size_bytes, original_dir"""
+    if not records:
+        return
+    with _db_lock:
+        conn = _db_conn()
+        conn.executemany(
+            "INSERT INTO deletions (timestamp,action,path,size_bytes,original_dir) VALUES (?,?,?,?,?)",
+            [(r["timestamp"], r["action"], r["path"], r["size_bytes"], r["original_dir"]) for r in records],
+        )
+        conn.commit()
+        conn.close()
+
+
+def db_get_analytics(recent_limit: int = 200) -> dict:
+    with _db_lock:
+        conn = _db_conn()
+        row = conn.execute("""
+            SELECT
+                COUNT(*) AS total_files,
+                COALESCE(SUM(size_bytes), 0) AS total_bytes,
+                COALESCE(SUM(CASE WHEN action='delete' THEN 1 ELSE 0 END), 0) AS deleted_count,
+                COALESCE(SUM(CASE WHEN action='delete' THEN size_bytes ELSE 0 END), 0) AS deleted_bytes,
+                COALESCE(SUM(CASE WHEN action='bin' THEN 1 ELSE 0 END), 0) AS binned_count,
+                COALESCE(SUM(CASE WHEN action='bin' THEN size_bytes ELSE 0 END), 0) AS binned_bytes
+            FROM deletions
+        """).fetchone()
+        recent = conn.execute(
+            "SELECT timestamp,action,path,size_bytes FROM deletions ORDER BY timestamp DESC LIMIT ?",
+            (recent_limit,)
+        ).fetchall()
+        conn.close()
+    return {
+        "total_files":    row["total_files"],
+        "total_bytes":    row["total_bytes"],
+        "deleted_count":  row["deleted_count"],
+        "deleted_bytes":  row["deleted_bytes"],
+        "binned_count":   row["binned_count"],
+        "binned_bytes":   row["binned_bytes"],
+        "recent":         [dict(r) for r in recent],
+    }
 
 
 def db_create_job(job_id: str, path: str, stages: List[str]):
@@ -173,15 +226,24 @@ async def startup():
 
 # ── Models ────────────────────────────────────────────────────────────────────
 class ScanRequest(BaseModel):
-    path: str
+    path: Optional[str] = None          # legacy single-path
+    paths: Optional[List[str]] = None   # multi-path
     stages: List[str] = ["size", "partial", "full"]
+
+    def resolved_paths(self) -> List[str]:
+        if self.paths:
+            return [p.strip() for p in self.paths if p.strip()]
+        if self.path:
+            return [self.path.strip()]
+        return []
 
 class DeleteRequest(BaseModel):
     paths: List[str]
 
 class MoveToBinRequest(BaseModel):
     paths: List[str]
-    scan_root: str
+    scan_root: Optional[str] = None   # legacy single root
+    scan_roots: Optional[List[str]] = None  # multi-root
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -207,8 +269,9 @@ async def delete_job_route(job_id: str):
 
 @app.post("/scan")
 async def start_scan(request: ScanRequest):
-    if not request.path or not request.path.strip():
-        raise HTTPException(status_code=400, detail="path must not be empty")
+    scan_paths = request.resolved_paths()
+    if not scan_paths:
+        raise HTTPException(status_code=400, detail="At least one path must be provided")
     requested_stages = [s.lower() for s in request.stages]
     invalid = set(requested_stages) - VALID_STAGES
     if invalid:
@@ -216,12 +279,14 @@ async def start_scan(request: ScanRequest):
     if not requested_stages:
         raise HTTPException(status_code=400, detail="At least one stage must be selected")
 
+    # Store as JSON list in the path column
+    path_str = json.dumps(scan_paths)
     job_id = str(uuid.uuid4())
-    _init_job_memory(job_id, request.path, requested_stages)
-    db_create_job(job_id, request.path, requested_stages)
+    _init_job_memory(job_id, path_str, requested_stages)
+    db_create_job(job_id, path_str, requested_stages)
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(executor, _run_scan, job_id, request.path, requested_stages, {})
+    loop.run_in_executor(executor, _run_scan, job_id, scan_paths, requested_stages, {})
     return {"job_id": job_id}
 
 
@@ -233,8 +298,14 @@ async def resume_scan(job_id: str):
     if db_job["status"] == "running":
         raise HTTPException(status_code=409, detail="Job is already running")
 
-    path   = db_job["path"]
-    stages = db_job["stages"] if isinstance(db_job["stages"], list) else json.loads(db_job["stages"])
+    path_raw = db_job["path"]
+    stages   = db_job["stages"] if isinstance(db_job["stages"], list) else json.loads(db_job["stages"])
+    # path may be a JSON list or a plain string (legacy)
+    try:
+        scan_paths = json.loads(path_raw) if path_raw.startswith("[") else [path_raw]
+    except Exception:
+        scan_paths = [path_raw]
+
     checkpoints = db_job.get("checkpoints") or {}
     if isinstance(checkpoints, str):
         try:
@@ -242,11 +313,11 @@ async def resume_scan(job_id: str):
         except Exception:
             checkpoints = {}
 
-    _init_job_memory(job_id, path, stages)
+    _init_job_memory(job_id, path_raw, stages)
     db_update_job(job_id, status="running", error=None)
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(executor, _run_scan, job_id, path, stages, checkpoints)
+    loop.run_in_executor(executor, _run_scan, job_id, scan_paths, stages, checkpoints)
     return {"job_id": job_id}
 
 
@@ -261,7 +332,13 @@ def _init_job_memory(job_id: str, path: str, stages: List[str]):
     }
 
 
-def _run_scan(job_id: str, path: str, stages: List[str], checkpoints: dict):
+def _run_scan(job_id: str, path, stages: List[str], checkpoints: dict):
+    # path may be a list of paths or a single string
+    if isinstance(path, str):
+        try:
+            path = json.loads(path) if path.startswith("[") else [path]
+        except Exception:
+            path = [path]
     if job_id not in jobs:
         return
     last_db_sync = [time.time()]
@@ -292,7 +369,8 @@ def _run_scan(job_id: str, path: str, stages: List[str], checkpoints: dict):
     try:
         scanner = DuplicateScanner(callback=progress_callback, checkpoint_callback=checkpoint_callback)
         results = scanner.scan(path, stages, checkpoints=checkpoints)
-        results["scan_root"] = path
+        results["scan_roots"] = path
+        results["scan_root"]  = path[0] if path else ""  # backward compat
         jobs[job_id]["results"] = results
         jobs[job_id]["status"] = "done"
         jobs[job_id]["progress"] = {
@@ -440,11 +518,18 @@ async def get_thumbnail(path: str = Query(...), size: int = Query(200)):
     raise HTTPException(status_code=400, detail="Not a supported file type")
 
 
+@app.get("/analytics")
+async def get_analytics():
+    return db_get_analytics()
+
+
 @app.post("/files/delete")
 async def delete_files(request: DeleteRequest):
     if not request.paths:
         raise HTTPException(status_code=400, detail="No paths provided")
     results = []
+    deletion_records = []
+    now = time.time()
     for path_str in request.paths:
         p = Path(path_str)
         try:
@@ -453,10 +538,14 @@ async def delete_files(request: DeleteRequest):
             elif not p.is_file():
                 results.append({"path": path_str, "status": "error", "reason": "Not a file"})
             else:
+                size = p.stat().st_size
                 p.unlink()
                 results.append({"path": path_str, "status": "deleted"})
+                deletion_records.append({"timestamp": now, "action": "delete", "path": path_str,
+                                         "size_bytes": size, "original_dir": str(p.parent)})
         except Exception as exc:
             results.append({"path": path_str, "status": "error", "reason": str(exc)})
+    db_record_deletions(deletion_records)
     deleted = [r for r in results if r["status"] == "deleted"]
     errors  = [r for r in results if r["status"] == "error"]
     return {"deleted": len(deleted), "errors": errors, "results": results}
@@ -466,9 +555,25 @@ async def delete_files(request: DeleteRequest):
 async def move_to_bin(request: MoveToBinRequest):
     if not request.paths:
         raise HTTPException(status_code=400, detail="No paths provided")
-    bin_dir = Path(request.scan_root) / "_duplicate_bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build sorted list of roots (longest first so most-specific path wins)
+    roots = request.scan_roots or ([request.scan_root] if request.scan_root else [])
+    roots_sorted = sorted([str(Path(r).resolve()) for r in roots if r], key=len, reverse=True)
+
+    def _bin_dir_for(file_path: Path) -> Path:
+        """Return the _duplicate_bin inside whichever scan root contains this file."""
+        resolved = str(file_path.resolve())
+        for root in roots_sorted:
+            if resolved.startswith(root):
+                return Path(root) / "_duplicate_bin"
+        # Fallback: use first root or the file's own directory
+        return (Path(roots_sorted[0]) if roots_sorted else file_path.parent) / "_duplicate_bin"
+
     results = []
+    deletion_records = []
+    now = time.time()
+    bin_dirs_created: set = set()
+
     for path_str in request.paths:
         p = Path(path_str)
         try:
@@ -478,6 +583,11 @@ async def move_to_bin(request: MoveToBinRequest):
             if not p.is_file():
                 results.append({"path": path_str, "status": "error", "reason": "Not a file"})
                 continue
+            size = p.stat().st_size
+            bin_dir = _bin_dir_for(p)
+            if str(bin_dir) not in bin_dirs_created:
+                bin_dir.mkdir(parents=True, exist_ok=True)
+                bin_dirs_created.add(str(bin_dir))
             dest = bin_dir / p.name
             if dest.exists():
                 counter = 1
@@ -486,8 +596,12 @@ async def move_to_bin(request: MoveToBinRequest):
                     counter += 1
             shutil.move(str(p), str(dest))
             results.append({"path": path_str, "status": "moved", "dest": str(dest)})
+            deletion_records.append({"timestamp": now, "action": "bin", "path": path_str,
+                                     "size_bytes": size, "original_dir": str(p.parent)})
         except Exception as exc:
             results.append({"path": path_str, "status": "error", "reason": str(exc)})
+
+    db_record_deletions(deletion_records)
     moved  = [r for r in results if r["status"] == "moved"]
     errors = [r for r in results if r["status"] == "error"]
-    return {"moved": len(moved), "errors": errors, "results": results, "bin": str(bin_dir)}
+    return {"moved": len(moved), "errors": errors, "results": results}

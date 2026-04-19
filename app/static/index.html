@@ -681,6 +681,60 @@
     .btn-danger { background: var(--danger); color: #fff; }
     .btn-danger:hover { opacity: 0.85; }
 
+    /* ── Bulk-action dialog ── */
+    .bulk-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .bulk-overlay.open { display: flex; }
+    .bulk-box {
+      background: var(--surface);
+      border: 1px solid #6b2f2f;
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      max-width: 460px;
+      width: 90vw;
+    }
+    .bulk-box h3 { color: var(--danger); font-size: 1.05rem; margin-bottom: 16px; }
+    .bulk-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .bulk-stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      text-align: center;
+    }
+    .bulk-stat .bv { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+    .bulk-stat .bl { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; }
+    .bulk-keep-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .bulk-keep-row label { font-size: 0.875rem; color: var(--text-dim); margin: 0; white-space: nowrap; }
+    .bulk-keep-row select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.875rem;
+      padding: 6px 10px;
+      flex: 1;
+    }
+    .bulk-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
     /* ── Delete result toast ── */
     .toast {
       position: fixed;
@@ -939,15 +993,43 @@
     <div id="jobs-list-panel"></div>
   </div>
 
+  <!-- Analytics -->
+  <div class="card" id="analytics-card">
+    <h2 style="cursor:pointer;user-select:none" onclick="toggleAnalytics()">
+      All-Time Stats
+      <span id="analytics-toggle" style="float:right;font-size:0.85rem;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--text-dim)">▼</span>
+    </h2>
+    <div id="analytics-body">
+      <div id="analytics-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:0.8rem;color:var(--text-dim)">Recent file history (last 200)</span>
+        <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="loadAnalytics()">Refresh</button>
+      </div>
+      <div id="analytics-table-wrap" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+        <table id="analytics-table" style="width:100%;border-collapse:collapse;font-size:0.78rem">
+          <thead>
+            <tr style="background:var(--surface2);position:sticky;top:0">
+              <th style="padding:7px 10px;text-align:left;color:var(--text-dim);font-weight:500">Action</th>
+              <th style="padding:7px 10px;text-align:left;color:var(--text-dim);font-weight:500">File</th>
+              <th style="padding:7px 10px;text-align:right;color:var(--text-dim);font-weight:500">Size</th>
+              <th style="padding:7px 10px;text-align:right;color:var(--text-dim);font-weight:500">Date</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- Scan Config -->
   <div class="card">
     <h2>Scan Configuration</h2>
 
-    <label for="scan-path">Folder path</label>
-    <div class="path-row">
-      <input type="text" id="scan-path" placeholder="/mnt/user/media" autocomplete="off" spellcheck="false" />
-      <button class="btn-browse" onclick="openBrowser()">&#128193; Browse</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <label style="margin:0">Folder paths</label>
+      <button class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" onclick="addPathRow()">+ Add folder</button>
     </div>
+    <div id="path-rows"></div>
 
     <div class="stages">
       <label class="stage-item">
@@ -1023,6 +1105,10 @@
     <div class="results-toolbar">
       <h3 id="groups-label">Duplicate groups</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-danger" id="delete-all-btn" onclick="promptBulkAction()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          Delete All Duplicates
+        </button>
         <button class="btn btn-primary" id="export-btn" onclick="exportResults()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zm-14 9v2h14v-2H5z"/></svg>
           Export JSON
@@ -1094,6 +1180,30 @@
   </div>
 </div>
 
+<!-- Bulk Action Dialog -->
+<div class="bulk-overlay" id="bulk-overlay">
+  <div class="bulk-box">
+    <h3>Delete all duplicates?</h3>
+    <div class="bulk-stats">
+      <div class="bulk-stat"><div class="bv" id="bulk-stat-groups">—</div><div class="bl">Groups</div></div>
+      <div class="bulk-stat"><div class="bv" id="bulk-stat-files">—</div><div class="bl">Files to remove</div></div>
+      <div class="bulk-stat"><div class="bv" id="bulk-stat-space">—</div><div class="bl">Space freed</div></div>
+    </div>
+    <div class="bulk-keep-row">
+      <label for="bulk-keep-select">Keep per group:</label>
+      <select id="bulk-keep-select" onchange="updateBulkStats()">
+        <option value="first">Keep First (top of list)</option>
+        <option value="oldest">Keep Oldest (earliest date)</option>
+      </select>
+    </div>
+    <div class="bulk-actions">
+      <button class="btn btn-secondary" onclick="closeBulkDialog()">Cancel</button>
+      <button class="btn btn-secondary" onclick="confirmBulkAction('bin')">Move All to Bin</button>
+      <button class="btn btn-danger" onclick="confirmBulkAction('delete')">Yes, Delete All</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1151,6 +1261,53 @@
       if (s === activeStage) { found = true; document.getElementById('pill-' + s).classList.add('active'); }
       else if (!found)        document.getElementById('pill-' + s).classList.add('done');
     }
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+  let analyticsOpen = true;
+
+  function toggleAnalytics() {
+    analyticsOpen = !analyticsOpen;
+    document.getElementById('analytics-body').style.display = analyticsOpen ? '' : 'none';
+    document.getElementById('analytics-toggle').textContent = analyticsOpen ? '▼' : '▶';
+  }
+
+  async function loadAnalytics() {
+    try {
+      const res = await fetch('/analytics');
+      if (!res.ok) return;
+      const d = await res.json();
+
+      const summary = document.getElementById('analytics-summary');
+      summary.innerHTML = `
+        <div class="bulk-stat"><div class="bv">${d.total_files.toLocaleString()}</div><div class="bl">Total files removed</div></div>
+        <div class="bulk-stat" style="grid-column:span 2"><div class="bv" style="font-size:1.1rem">${fmtSize(d.total_bytes)}</div><div class="bl">Total space freed</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--danger)">${d.deleted_count.toLocaleString()}</div><div class="bl">Permanently deleted</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--danger)">${fmtSize(d.deleted_bytes)}</div><div class="bl">Space from deletions</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--warning)">${d.binned_count.toLocaleString()}</div><div class="bl">Moved to bin</div></div>
+        <div class="bulk-stat"><div class="bv" style="color:var(--warning)">${fmtSize(d.binned_bytes)}</div><div class="bl">Space from bin moves</div></div>
+      `;
+
+      const tbody = document.getElementById('analytics-tbody');
+      if (!d.recent.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--text-faint)">No deletions recorded yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = d.recent.map((r, i) => {
+        const name = r.path.split('/').pop();
+        const isDelete = r.action === 'delete';
+        const badge = isDelete
+          ? `<span style="background:rgba(224,92,92,0.15);color:var(--danger);padding:2px 6px;border-radius:4px;font-size:0.7rem">Deleted</span>`
+          : `<span style="background:rgba(245,166,35,0.15);color:var(--warning);padding:2px 6px;border-radius:4px;font-size:0.7rem">Binned</span>`;
+        const bg = i % 2 === 0 ? '' : 'background:var(--surface2)';
+        return `<tr style="${bg}">
+          <td style="padding:6px 10px">${badge}</td>
+          <td style="padding:6px 10px;color:var(--text-dim);overflow:hidden;max-width:340px" title="${esc(r.path)}">${esc(name)}</td>
+          <td style="padding:6px 10px;text-align:right;white-space:nowrap">${fmtSize(r.size_bytes)}</td>
+          <td style="padding:6px 10px;text-align:right;white-space:nowrap;color:var(--text-dim)">${new Date(r.timestamp * 1000).toLocaleDateString()}</td>
+        </tr>`;
+      }).join('');
+    } catch (_) {}
   }
 
   // ── Recent Jobs ────────────────────────────────────────────────────────────
@@ -1283,15 +1440,49 @@
     }
   }
 
+  // ── Multi-path rows ─────────────────────────────────────────────────────────
+  let pathRowCounter = 0;
+  let browserTargetRowId = null;
+
+  function addPathRow(value = '') {
+    const id = 'path-row-' + (++pathRowCounter);
+    const wrap = document.createElement('div');
+    wrap.className = 'path-row';
+    wrap.id = id;
+    wrap.style.marginBottom = '8px';
+    wrap.innerHTML = `
+      <input type="text" placeholder="/mnt/user/media" autocomplete="off" spellcheck="false"
+             value="${esc(value)}"
+             onkeydown="if(event.key==='Enter') startScan()"
+             style="flex:1" />
+      <button class="btn-browse" onclick="openBrowserForRow('${id}')">&#128193; Browse</button>
+      <button class="btn btn-secondary" style="padding:6px 10px;font-size:1rem;line-height:1" onclick="removePathRow('${id}')" title="Remove">✕</button>
+    `;
+    document.getElementById('path-rows').appendChild(wrap);
+    return id;
+  }
+
+  function removePathRow(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+    // Always keep at least one row
+    if (!document.getElementById('path-rows').children.length) addPathRow();
+  }
+
+  function getScanPaths() {
+    return Array.from(document.querySelectorAll('#path-rows input[type="text"]'))
+      .map(i => i.value.trim()).filter(Boolean);
+  }
+
   // ── Scan lifecycle ─────────────────────────────────────────────────────────
   async function startScan() {
-    const path   = document.getElementById('scan-path').value.trim();
+    const paths  = getScanPaths();
     const stages = [];
     if (document.getElementById('stage-size').checked)    stages.push('size');
     if (document.getElementById('stage-partial').checked) stages.push('partial');
     if (document.getElementById('stage-full').checked)    stages.push('full');
 
-    if (!path) { alert('Please enter a folder path.'); return; }
+    if (!paths.length) { alert('Please enter at least one folder path.'); return; }
     if (!stages.length) { alert('Please select at least one stage.'); return; }
 
     // Reset UI
@@ -1313,7 +1504,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, stages }),
+        body: JSON.stringify({ paths, stages }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1609,7 +1800,7 @@
           data.errors.length ? 'error' : 'success'
         );
       } else {
-        res  = await fetch('/files/move-to-bin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths, scan_root: lastResults.scan_root }) });
+        res  = await fetch('/files/move-to-bin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths, scan_roots: lastResults.scan_roots || [lastResults.scan_root] }) });
         data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Move failed');
         const removedSet = new Set(data.results.filter(r => r.status === 'moved').map(r => r.path));
@@ -1619,6 +1810,7 @@
           data.errors.length ? 'error' : 'success'
         );
       }
+      loadAnalytics();
     } catch (e) {
       showToast('Error: ' + e.message, 'error');
     }
@@ -1669,7 +1861,8 @@
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (document.getElementById('confirm-overlay').classList.contains('open')) closeConfirm();
+      if (document.getElementById('bulk-overlay').classList.contains('open')) closeBulkDialog();
+      else if (document.getElementById('confirm-overlay').classList.contains('open')) closeConfirm();
       else closeModal();
     }
   });
@@ -1677,6 +1870,100 @@
   // ── Expand/Collapse (no-op, kept for export toolbar) ──────────────────────
   function expandAll()   {}
   function collapseAll() {}
+
+  // ── Bulk delete ────────────────────────────────────────────────────────────
+  function getBulkKeepStrategy() {
+    return document.getElementById('bulk-keep-select').value;
+  }
+
+  function getKeeperIndex(group, strategy) {
+    if (strategy === 'oldest') {
+      let oldestIdx = 0;
+      let oldestTime = group.files[0].modified;
+      group.files.forEach((f, i) => { if (f.modified < oldestTime) { oldestTime = f.modified; oldestIdx = i; } });
+      return oldestIdx;
+    }
+    return 0; // first
+  }
+
+  function getBulkPathsToRemove(strategy) {
+    if (!lastResults) return [];
+    const paths = [];
+    lastResults.groups.forEach(group => {
+      const keepIdx = getKeeperIndex(group, strategy);
+      group.files.forEach((f, i) => { if (i !== keepIdx) paths.push(f.path); });
+    });
+    return paths;
+  }
+
+  function updateBulkStats() {
+    if (!lastResults) return;
+    const strategy = getBulkKeepStrategy();
+    const paths = getBulkPathsToRemove(strategy);
+    const groups = lastResults.groups.length;
+    let bytes = 0;
+    lastResults.groups.forEach(group => {
+      const keepIdx = getKeeperIndex(group, strategy);
+      group.files.forEach((f, i) => { if (i !== keepIdx) bytes += f.size || 0; });
+    });
+    document.getElementById('bulk-stat-groups').textContent = groups;
+    document.getElementById('bulk-stat-files').textContent = paths.length;
+    document.getElementById('bulk-stat-space').textContent = fmtSize(bytes);
+  }
+
+  function promptBulkAction() {
+    if (!lastResults || !lastResults.groups.length) return;
+    updateBulkStats();
+    document.getElementById('bulk-overlay').classList.add('open');
+  }
+
+  function closeBulkDialog() {
+    document.getElementById('bulk-overlay').classList.remove('open');
+  }
+
+  async function confirmBulkAction(action) {
+    const strategy = getBulkKeepStrategy();
+    const paths = getBulkPathsToRemove(strategy);
+    closeBulkDialog();
+    if (!paths.length) { showToast('Nothing to remove.', 'error'); return; }
+
+    const removedSet = new Set();
+    try {
+      let res, data;
+      if (action === 'delete') {
+        res  = await fetch('/files/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths }) });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Delete failed');
+        data.results.filter(r => r.status === 'deleted').forEach(r => removedSet.add(r.path));
+        showToast(
+          data.errors.length ? `Deleted ${data.deleted} file(s). ${data.errors.length} error(s).` : `Deleted ${data.deleted} file(s).`,
+          data.errors.length ? 'error' : 'success'
+        );
+      } else {
+        res  = await fetch('/files/move-to-bin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ paths, scan_roots: lastResults.scan_roots || [lastResults.scan_root] }) });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Move failed');
+        data.results.filter(r => r.status === 'moved').forEach(r => removedSet.add(r.path));
+        showToast(
+          data.errors.length ? `Moved ${data.moved} file(s). ${data.errors.length} error(s).` : `Moved ${data.moved} file(s) to _duplicate_bin.`,
+          data.errors.length ? 'error' : 'success'
+        );
+      }
+    } catch (e) {
+      showToast('Error: ' + e.message, 'error');
+      return;
+    }
+
+    // Remove handled files from all groups, drop groups down to ≤1 file
+    lastResults.groups.forEach(group => {
+      group.files = group.files.filter(f => !removedSet.has(f.path));
+      group.file_count = group.files.length;
+    });
+    lastResults.groups = lastResults.groups.filter(g => g.files.length > 1);
+    lastResults.group_count = lastResults.groups.length;
+    renderResults(lastResults);
+    loadAnalytics();
+  }
 
   // ── Export ─────────────────────────────────────────────────────────────────
   function exportResults() {
@@ -1703,8 +1990,19 @@
   // ── Folder browser ─────────────────────────────────────────────────────────
   let browserCurrentPath = '/';
 
+  function openBrowserForRow(rowId) {
+    browserTargetRowId = rowId;
+    const input = document.querySelector(`#${rowId} input[type="text"]`);
+    const existing = input ? input.value.trim() : '';
+    browseTo(existing || '/').then(() => {
+      document.getElementById('browser-overlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    });
+  }
+
   async function openBrowser() {
-    const existing = document.getElementById('scan-path').value.trim();
+    browserTargetRowId = null;
+    const existing = getScanPaths()[0] || '';
     await browseTo(existing || '/');
     document.getElementById('browser-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
@@ -1720,7 +2018,16 @@
   }
 
   function selectCurrentFolder() {
-    document.getElementById('scan-path').value = browserCurrentPath;
+    if (browserTargetRowId) {
+      const input = document.querySelector(`#${browserTargetRowId} input[type="text"]`);
+      if (input) input.value = browserCurrentPath;
+    } else {
+      // No target row — update first input or add a new one
+      const inputs = document.querySelectorAll('#path-rows input[type="text"]');
+      if (inputs.length) inputs[0].value = browserCurrentPath;
+      else addPathRow(browserCurrentPath);
+    }
+    browserTargetRowId = null;
     closeBrowser();
   }
 
@@ -1762,13 +2069,10 @@
     }
   }
 
-  // ── Enter key on path input ────────────────────────────────────────────────
-  document.getElementById('scan-path').addEventListener('keydown', e => {
-    if (e.key === 'Enter') startScan();
-  });
-
   // ── Init ──────────────────────────────────────────────────────────────────
+  addPathRow();   // start with one empty path row
   loadJobs();
+  loadAnalytics();
 </script>
 </body>
 </html>

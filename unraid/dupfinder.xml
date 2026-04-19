@@ -12,5 +12,7 @@
   <Icon>https://raw.githubusercontent.com/iuffxguy/dupfinder/main/unraid/icon.png</Icon>
   <ExtraParams/>
   <Config Name="WebUI Port" Target="7878" Default="7878" Mode="tcp" Description="DupFinder web interface port" Type="Port" Display="always" Required="true" Mask="false">7878</Config>
-  <Config Name="Media" Target="/data" Default="/mnt/user/" Mode="rw" Description="Root of your Unraid user shares. Scan any subfolder from within the app." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/</Config>
+  <Config Name="Media (Primary)" Target="/data" Default="/mnt/user/" Mode="rw" Description="Primary mount — root of your Unraid user shares. Browse and scan any subfolder from within the app." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/</Config>
+  <Config Name="Media (Extra 1)" Target="/data2" Default="" Mode="rw" Description="Optional second mount for cross-share duplicate scanning." Type="Path" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Media (Extra 2)" Target="/data3" Default="" Mode="rw" Description="Optional third mount for cross-share duplicate scanning." Type="Path" Display="advanced" Required="false" Mask="false"></Config>
 </Container>
