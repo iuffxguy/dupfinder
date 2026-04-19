@@ -357,6 +357,14 @@
       cursor: pointer;
     }
 
+    .file-date {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      margin-top: 3px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .file-date.oldest { color: var(--success); font-weight: 600; }
+
     .file-info { flex: 1; min-width: 0; }
     .file-name {
       font-size: 0.9rem;
@@ -942,7 +950,8 @@
     </div>
     <div class="modal-footer">
       <span class="footer-hint">Check files to remove, or use auto-select.</span>
-      <button class="btn btn-secondary" onclick="autoSelectDuplicates()">Keep First, Delete Rest</button>
+      <button class="btn btn-secondary" onclick="autoSelectDuplicates()">Keep First</button>
+      <button class="btn btn-secondary" onclick="autoSelectKeepOldest()">Keep Oldest</button>
       <button class="btn btn-secondary" onclick="promptAction('bin')">Move to Bin</button>
       <button class="btn btn-danger btn" onclick="promptAction('delete')">Delete</button>
     </div>
@@ -1225,19 +1234,31 @@
     document.body.style.overflow = 'hidden';
   }
 
+  function fmtDate(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
   function renderModalFileRows(group) {
+    // Find the oldest file (earliest mtime)
+    const oldestTs = Math.min(...group.files.map(f => f.modified || Infinity));
+
     const rows = document.getElementById('modal-file-rows');
     rows.innerHTML = group.files.map((f, fi) => {
-      const isFirst = fi === 0;
+      const isOldest = f.modified === oldestTs;
       return `
-        <div class="file-row${isFirst ? ' kept' : ''}" id="modal-row-${fi}">
-          <input type="checkbox" id="mchk-${fi}" ${isFirst ? '' : ''} title="Mark for deletion" />
+        <div class="file-row" id="modal-row-${fi}">
+          <input type="checkbox" id="mchk-${fi}" title="Mark for deletion" />
           <div class="file-info">
             <div class="file-name" title="${esc(f.path)}">${esc(f.name)}</div>
             <div class="file-dir">${esc(f.directory)}</div>
+            <div class="file-date${isOldest ? ' oldest' : ''}">
+              ${fmtDate(f.modified)}${isOldest ? ' — oldest' : ''}
+            </div>
           </div>
           <div class="file-size-tag">${fmtSize(f.size)}</div>
-          ${isFirst ? '<span class="kept-badge">keep</span>' : ''}
         </div>`;
     }).join('');
   }
@@ -1246,7 +1267,24 @@
     if (!currentModalGroup) return;
     currentModalGroup.files.forEach((_, fi) => {
       const chk = document.getElementById('mchk-' + fi);
-      if (chk) chk.checked = fi !== 0;  // keep first, check the rest
+      if (chk) chk.checked = fi !== 0;
+    });
+  }
+
+  function autoSelectKeepOldest() {
+    if (!currentModalGroup) return;
+    const oldestTs = Math.min(...currentModalGroup.files.map(f => f.modified || Infinity));
+    // If multiple files share the same oldest timestamp, keep only the first one
+    let keptOne = false;
+    currentModalGroup.files.forEach((f, fi) => {
+      const chk = document.getElementById('mchk-' + fi);
+      if (!chk) return;
+      if (f.modified === oldestTs && !keptOne) {
+        chk.checked = false;  // keep this one
+        keptOne = true;
+      } else {
+        chk.checked = true;   // mark for removal
+      }
     });
   }
 
