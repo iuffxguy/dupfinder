@@ -11,20 +11,6 @@
   <TemplateURL>https://raw.githubusercontent.com/iuffxguy/dupfinder/main/unraid/dupfinder.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/iuffxguy/dupfinder/main/unraid/icon.png</Icon>
   <ExtraParams/>
-  <DateInstalled/>
-  <Port>
-    <HostPort>7878</HostPort>
-    <ContainerPort>7878</ContainerPort>
-    <Protocol>tcp</Protocol>
-    <Mode>tcp</Mode>
-    <Name>WebUI</Name>
-    <Description>DupFinder web interface</Description>
-  </Port>
-  <Volume>
-    <HostDir>/mnt/user/</HostDir>
-    <ContainerDir>/data</ContainerDir>
-    <Mode>rw</Mode>
-    <Name>Media</Name>
-    <Description>Root of your Unraid user shares. Scan any subfolder from within the app.</Description>
-  </Volume>
+  <Config Name="WebUI Port" Target="7878" Default="7878" Mode="tcp" Description="DupFinder web interface port" Type="Port" Display="always" Required="true" Mask="false">7878</Config>
+  <Config Name="Media" Target="/data" Default="/mnt/user/" Mode="rw" Description="Root of your Unraid user shares. Scan any subfolder from within the app." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/</Config>
 </Container>
